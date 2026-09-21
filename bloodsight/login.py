@@ -1,10 +1,27 @@
-"""Login page, demo account shortcuts, and first-open sign-up for a patient with a lab code."""
+"""Login page, demo account shortcuts, and first-open sign-up. The lab code is entered later, inside the app."""
 
 import streamlit as st
 
 import store
 
-DEMO = [("Blood centre", "centre", "centre123"), ("Lab / doctor", "lab", "lab123"), ("Patient", "patient", "patient123")]
+DEMO = [("Blood centre", "centre", "centre123"), ("Lab", "lab", "lab123"), ("Donor", "patient", "patient123")]
+
+LEGAL = """
+<div class="bs-legal">
+  <div class="bs-legal-h">Secure &amp; Compliant</div>
+  <div class="bs-legal-lead">Your data security and privacy matter to us.</div>
+  <div class="bs-legal-grid">
+    <div><b>GDPR &amp; Data Protection:</b> We are committed to protecting personal data and supporting
+      applicable data protection requirements.</div>
+    <div><b>Secure Data Transmission:</b> Data is protected in transit using industry-standard
+      encryption protocols.</div>
+    <div><b>Privacy &amp; Access Control:</b> Access to organizational data is managed through
+      authentication and appropriate access controls.</div>
+  </div>
+  <div class="bs-legal-foot">By signing in, you agree to our Terms of Service and Privacy Policy.
+    For more information, visit our Security &amp; Compliance page.</div>
+</div>
+"""
 
 
 def require_login() -> dict:
@@ -17,9 +34,8 @@ def require_login() -> dict:
 
     _, mid, _ = st.columns([1, 1.2, 1])
     with mid:
-        st.markdown("## 🩸 BloodSight AI")
-        st.caption("Blood supply intelligence: see the shortage before it happens.")
-        tab_in, tab_new = st.tabs(["Log in", "First time? Use your lab code"])
+        st.markdown("## BloodSight AI")
+        tab_in, tab_new = st.tabs(["Log in", "Sign up"])
         with tab_in:
             with st.form("login"):
                 username = st.text_input("Username")
@@ -36,26 +52,22 @@ def require_login() -> dict:
                 if col.button(label, use_container_width=True, help=f"{u} / {pw}", key=f"demo_{u}"):
                     st.session_state["username"] = u
                     st.rerun()
-            st.caption("centre / centre123 · lab / lab123 · patient / patient123 (Alex, O-, donor part on) · "
-                       "patient2 / patient123 (Sam, A+, results only)")
         with tab_new:
             _sign_up()
+        st.markdown(LEGAL, unsafe_allow_html=True)
     st.stop()
 
 
 def _sign_up() -> None:
-    """Screen 4, first open: three questions and three switches. The lab code ties the app to one patient."""
-    st.caption("Your lab code is printed on your lab letter. Demo codes that are still free: "
-               + (", ".join(store.unclaimed_lab_codes()) or "none"))
+    """First open: who you are and what the app may do. The lab code is added later, inside the app."""
     with st.form("signup"):
-        lab_code = st.text_input("Your lab code", placeholder="e.g. BL-4821")
         name = st.text_input("Your name")
         c1, c2 = st.columns(2)
         username = c1.text_input("Choose a username")
         password = c2.text_input("Choose a password", type="password")
+        postcode = st.text_input("Where do you live?", placeholder="Postcode, e.g. 6211")
         blood_type = st.selectbox("Blood type", ["I do not know"] + store.BLOOD_TYPES,
                                   help="Unknown: your lab result fills it in.")
-        postcode = st.text_input("Where do you live?", placeholder="Postcode, e.g. 6211")
         st.markdown("**What may the app do?**")
         s_results = st.toggle("Show me my lab results", value=True)
         s_nearby = st.toggle("Tell me when a place nearby needs my blood type", value=False)
@@ -64,7 +76,7 @@ def _sign_up() -> None:
         go = st.form_submit_button("Continue", type="primary", use_container_width=True)
     if go:
         try:
-            user = store.register_patient(lab_code, username, password, name, postcode,
+            user = store.register_patient("", username, password, name, postcode,
                                           None if blood_type == "I do not know" else blood_type,
                                           {"results": s_results, "nearby": s_nearby, "gave_before": s_gave})
         except ValueError as e:

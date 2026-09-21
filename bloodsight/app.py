@@ -10,7 +10,7 @@ import login
 import ui
 from storage_config import StorageUnavailable
 
-st.set_page_config(page_title="BloodSight AI", page_icon="🩸", layout="wide")
+st.set_page_config(page_title="BloodSight AI", page_icon="🩸", layout="wide", initial_sidebar_state="collapsed")
 ui.css()
 
 try:

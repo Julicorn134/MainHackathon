@@ -35,10 +35,19 @@ MIN_DAYS_BETWEEN_DONATIONS = 56
 EXPECTED_BOOKING_RATE = 0.09  # from earlier requests: about 9 in 100 asked people book
 
 PLACES = {
-    "rbc": {"name": "Regional Blood Centre", "kind": "blood centre"},
-    "mumc": {"name": "MUMC+ hospital", "kind": "hospital"},
-    "heerlen": {"name": "Donor centre Heerlen", "kind": "donor centre"},
+    "rbc": {"name": "Regional Blood Centre", "kind": "blood centre", "lat": 50.8514, "lon": 5.6910},
+    "mumc": {"name": "MUMC+ hospital", "kind": "hospital", "lat": 50.8357, "lon": 5.7140},
+    "heerlen": {"name": "Donor centre Heerlen", "kind": "donor centre", "lat": 50.8882, "lon": 5.9795},
 }
+# Other sites of the regional network: shown on the map and listed as informed by network notices (no accounts).
+NETWORK_SITES = {
+    "sittard": {"name": "Zuyderland blood bank Sittard", "kind": "hospital", "lat": 50.9986, "lon": 5.8690},
+    "roermond": {"name": "Laurentius blood bank Roermond", "kind": "hospital", "lat": 51.1942, "lon": 5.9875},
+    "venlo": {"name": "VieCuri blood bank Venlo", "kind": "hospital", "lat": 51.3704, "lon": 6.1724},
+    "weert": {"name": "Donor centre Weert", "kind": "donor centre", "lat": 51.2517, "lon": 5.7069},
+}
+ORDER_COMPONENTS = ["Red cells", "Platelets", "Plasma", "Whole blood"]
+ORDER_STATUSES = ["submitted", "confirmed", "partly available", "ready for pickup", "delivered", "declined"]
 LAB_NAME = "Bloodlab Maastricht"
 
 
@@ -155,6 +164,8 @@ def _seed() -> dict:
             "centre": _account("centre123", role="centre", name="Robin Vos", org="rbc",
                                title="Regional Blood Centre"),
             "lab": _account("lab123", role="lab", name="Dr. Imke Peters", org="lab", title=LAB_NAME),
+            "hospital": _account("hospital123", role="centre", name="Noor Hendriks", org="mumc",
+                                 title="MUMC+ hospital blood bank"),
             "patient": _patient("patient123", "Alex Jansen", "BL-4790", "O-", "6211",
                                 {"rbc": 2.1, "mumc": 3.4, "heerlen": 24.0},
                                 {"results": True, "nearby": True, "gave_before": True},
@@ -178,7 +189,17 @@ def _seed() -> dict:
         ],
         "bookings": [],
         "declines": [],       # {"request": id, "username": ...}; only ever read as a count
-        "notifications": [],
+        "orders": [],         # hospital / lab blood orders to a blood centre
+        "network": [],        # deficiency / surplus notices between blood centres
+        "notifications": [
+            {"id": "N-1", "to": "centre", "kind": "network", "title": "MUMC+ hospital contacted for 4 blood donations",
+             "body": "A hospital in Maastricht was asked for 4 units of O- to bridge the coming week. "
+                     "Awaiting confirmation.",
+             "from": "BloodSight AI", "ref": None, "created_at": f"{t.isoformat()} 07:40:00", "read": False},
+            {"id": "N-2", "to": "centre", "kind": "message", "title": "25 new patients in the Limburg area",
+             "body": "25 people in the Limburg area joined through their lab this week. 9 switched the donor part on.",
+             "from": "BloodSight AI", "ref": None, "created_at": f"{t.isoformat()} 07:15:00", "read": False},
+        ],
         "lab": {"published_batches": [], "released": [], "phoned": []},
         "counter": 2,
     }
@@ -243,16 +264,34 @@ def unclaimed_lab_codes() -> list[str]:
     return sorted((set(REPORTS) | set(data_store.known_lab_codes())) - claimed)
 
 
-def register_patient(lab_code: str, username: str, password: str, name: str, postcode: str,
-                     blood_type: str | None, switches: dict) -> dict:
-    """First open: the lab code ties the account to one patient. Raises ValueError with a readable reason."""
-    lab_code, username = lab_code.strip().upper(), username.strip().lower()
+def _check_lab_code(state: dict, lab_code: str) -> None:
     import data_store
-    state = load()
     if lab_code not in REPORTS and lab_code not in data_store.known_lab_codes():
         raise ValueError("This lab code is not known. It is printed on your lab letter, e.g. BL-4821.")
     if any(u.get("lab_code") == lab_code for u in state["users"].values()):
         raise ValueError("This lab code already has an account.")
+
+
+def link_lab_code(username: str, lab_code: str) -> dict:
+    """Inside the app, after sign-up: tie the account to the lab's record. Raises ValueError if refused."""
+    lab_code = (lab_code or "").strip().upper()
+    state = load()
+    _check_lab_code(state, lab_code)
+    u = state["users"][username]
+    u["lab_code"] = lab_code
+    if not u.get("blood_type") and lab_code in REPORTS and BATCH_ID in state["lab"]["published_batches"]:
+        u["blood_type"] = REPORTS[lab_code][-1]["blood_type"]
+    save(state)
+    return _public(username, u)
+
+
+def register_patient(lab_code: str, username: str, password: str, name: str, postcode: str,
+                     blood_type: str | None, switches: dict) -> dict:
+    """First open: the lab code ties the account to one patient. Raises ValueError with a readable reason."""
+    lab_code, username = (lab_code or "").strip().upper() or None, username.strip().lower()
+    state = load()
+    if lab_code:
+        _check_lab_code(state, lab_code)
     if not username or username in state["users"]:
         raise ValueError("This username is taken.")
     if len(password) < 6:
@@ -265,7 +304,7 @@ def register_patient(lab_code: str, username: str, password: str, name: str, pos
                  "heerlen": round(float(rng.uniform(18, 30)), 1)}
     state["users"][username] = _patient(password, name.strip() or username, lab_code, blood_type, postcode.strip(),
                                         distances, {"results": True, "nearby": False, "gave_before": False, **switches})
-    if switches.get("results", True) and BATCH_ID in state["lab"]["published_batches"]:
+    if lab_code in REPORTS and switches.get("results", True) and BATCH_ID in state["lab"]["published_batches"]:
         rep = next((r for r in REPORTS[lab_code] if r["id"] in BATCH_REPORT_IDS), None)
         if rep:
             flagged = [v for v in rep["values"] if v["flag"] != "In range"]
@@ -718,3 +757,104 @@ def publish_batch(by: str) -> int:
                    f"{len(rep['values'])} values, {len(out)} out of range.", LAB_NAME, ref=rep["id"], state=state)
     save(state)
     return BATCH_TOTALS["ready"] + len(state["lab"]["released"])
+
+
+# ------------------------------------------------ hospital / lab blood orders
+
+def create_order(by: str, to_place: str, component: str, blood_type: str, units: int, needed_by: str,
+                 procedure: str = "", note: str = "") -> dict:
+    """A hospital or lab submits an expected blood requirement to a blood centre."""
+    state = load()
+    state["order_counter"] = state.get("order_counter", 0) + 1
+    sender = state["users"][by]
+    order = {"id": f"ORD-{state['order_counter']}", "by": by, "from_org": sender.get("title") or sender["name"],
+             "to_place": to_place, "component": component, "blood_type": blood_type, "units": int(units),
+             "needed_by": needed_by, "procedure": procedure, "note": note, "status": "submitted",
+             "history": [{"at": _stamp(), "status": "submitted", "by": sender["name"], "note": note}],
+             "messages": [], "created_at": _stamp()}
+    state.setdefault("orders", []).append(order)
+    for staff, su in state["users"].items():
+        if su["role"] == "centre" and su.get("org") == to_place:
+            notify(staff, "order", f"New blood order {order['id']}: {units} x {blood_type} {component.lower()}",
+                   f"From {order['from_org']}, needed by {needed_by}." + (f" {procedure}." if procedure else ""),
+                   order["from_org"], ref=order["id"], state=state)
+    save(state)
+    return order
+
+
+def orders(by: str | None = None, to_place: str | None = None) -> list[dict]:
+    items = [o for o in load().get("orders", [])
+             if (by is None or o["by"] == by) and (to_place is None or o["to_place"] == to_place)]
+    return sorted(items, key=lambda o: int(o["id"].split("-")[1]), reverse=True)
+
+
+def update_order(order_id: str, status: str, by: str, note: str = "") -> dict:
+    """The blood centre answers an order. The sender is notified, also about supply constraints."""
+    state = load()
+    o = next(x for x in state["orders"] if x["id"] == order_id)
+    o["status"] = status
+    o["history"].append({"at": _stamp(), "status": status, "by": state["users"][by]["name"], "note": note})
+    notify(o["by"], "order", f"Order {order_id}: {status}",
+           note or f"{PLACES[o['to_place']]['name']} updated your order.", PLACES[o["to_place"]]["name"],
+           ref=order_id, state=state)
+    save(state)
+    return o
+
+
+def order_message(order_id: str, by: str, text: str) -> None:
+    """Communication on one order, in both directions."""
+    state = load()
+    o = next(x for x in state["orders"] if x["id"] == order_id)
+    sender = state["users"][by]
+    o["messages"].append({"at": _stamp(), "by": sender["name"], "role": sender["role"], "text": text})
+    if sender["role"] == "centre":
+        targets = [o["by"]]
+    else:
+        targets = [n for n, su in state["users"].items() if su["role"] == "centre" and su.get("org") == o["to_place"]]
+    for t in targets:
+        notify(t, "order", f"Message on order {order_id}", text, sender.get("title") or sender["name"],
+               ref=order_id, state=state)
+    save(state)
+
+
+def supply_constraint_notice(by: str, blood_type: str, text: str) -> int:
+    """The blood centre warns every hospital / lab account about a supply constraint."""
+    state = load()
+    sender = state["users"][by]
+    targets = [n for n, su in state["users"].items() if su["role"] == "lab" or (su["role"] == "centre" and n != by)]
+    for t in targets:
+        notify(t, "network", f"Supply constraint: {blood_type}", text, sender.get("title") or sender["name"],
+               state=state)
+    save(state)
+    return len(targets)
+
+
+# ------------------------------------------- notices between blood centres
+
+def send_network_notice(by: str, kind: str, blood_type: str, units: int, note: str = "") -> dict:
+    """kind: deficiency | surplus. Goes to every other blood centre account; sites without an account are
+    listed as informed (simulated by BloodSight AI)."""
+    state = load()
+    sender = state["users"][by]
+    state["counter"] += 1
+    notice = {"id": f"NET-{state['counter']}", "from_place": sender.get("org"), "from_org": sender.get("title"),
+              "kind": kind, "blood_type": blood_type, "units": int(units), "note": note, "created_at": _stamp(),
+              "informed": [v["name"] for v in NETWORK_SITES.values()]}
+    state.setdefault("network", []).append(notice)
+    word = "needs" if kind == "deficiency" else "can spare"
+    for staff, su in state["users"].items():
+        if su["role"] == "centre" and staff != by:
+            notify(staff, "network", f"{notice['from_org']} {word} {units} units of {blood_type}", note or "",
+                   notice["from_org"], ref=notice["id"], state=state)
+            notice["informed"].insert(0, su.get("title") or su["name"])
+    save(state)
+    return notice
+
+
+def network_notices() -> list[dict]:
+    return sorted(load().get("network", []), key=lambda n: n["created_at"], reverse=True)
+
+
+def network_map() -> list[dict]:
+    """Every site of the regional network with coordinates, for the map."""
+    return [{"id": k, **v} for k, v in {**PLACES, **NETWORK_SITES}.items()]

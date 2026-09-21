@@ -12,7 +12,7 @@ a slot. All data in this repo is synthetic.
 
 The **Data** pages now accept CSV history and JSON lab reports, save them in Supabase when configured,
 and feed the forecast and AI evidence from saved records. See [cloud setup](../supabase/README.md)
-and [data/AI setup](../docs/DATA_AND_AI.md). AI explanations require an OpenAI key and a successful API response.
+and [data/AI setup](../docs/DATA_AND_AI.md). AI explanations require an OpenRouter or direct OpenAI key and a successful API response.
 
 ## Run it
 
@@ -148,7 +148,7 @@ synthetic data, not a production system, and it must not be pointed at real pati
   switches are off, the page says so and shows nothing.
 - **Donations.** How many donations and at how many places, the slots currently booked, the
   donation history with where each one went, and a per-place switch: whether that place may ask.
-- **Ask.** A question form calls OpenAI with this person's permitted results and donor context.
+- **Ask.** A question form calls the configured AI provider with this person's permitted results and donor context.
   Answers show the supplied source records. No key or provider failure produces an availability
   message. The model is instructed not to diagnose, infer causes or promise donation eligibility;
   source checks are not a guarantee of medical correctness.

@@ -15,8 +15,8 @@ def isolated_state(tmp_path, monkeypatch):
     monkeypatch.setattr(store, "STATE_PATH", tmp_path / "state.json")
     monkeypatch.setenv("BLOODSIGHT_DB", str(tmp_path / "records.sqlite3"))
     monkeypatch.setattr(ai_config, "SECRETS_PATH", tmp_path / "no-secrets.toml")
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("OPENAI_MODEL", raising=False)
+    for key in ("AI_PROVIDER", "OPENAI_API_KEY", "OPENAI_MODEL", "OPENROUTER_API_KEY", "OPENROUTER_MODEL"):
+        monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("BLOODSIGHT_DATA_BACKEND", "sqlite")
     for key in ("SUPABASE_URL", "SUPABASE_SECRET_KEY", "SUPABASE_SERVICE_ROLE_KEY"):
         monkeypatch.delenv(key, raising=False)

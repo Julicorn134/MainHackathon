@@ -119,19 +119,35 @@ def answer(username: str, question: str, *, source="uploaded", report_id=None) -
         raise ValueError("Ask a question of 1–2,000 characters.")
     config = ai_config.settings()
     if not config["api_key"]:
-        raise AIUnavailable("AI is not connected yet. Add OPENAI_API_KEY to local settings; no canned answer was used.")
+        raise AIUnavailable(f"AI is not connected yet. Add {config['key_name']} to server settings; no canned answer was used.")
     packet = evidence_for(username, source, report_id)
     try:
-        with OpenAI(api_key=config["api_key"], base_url="https://api.openai.com/v1",
+        with OpenAI(api_key=config["api_key"], base_url=config["base_url"],
                     timeout=35.0, max_retries=0) as client:
-            response = client.responses.parse(
-                model=config["model"], instructions=INSTRUCTIONS,
-                input=json.dumps({"question": question.strip(), **packet}, ensure_ascii=False, allow_nan=False),
-                text_format=GroundedAnswer, max_output_tokens=1800, store=False,
-            )
-        parsed = response.output_parsed
-        if response.status != "completed" or parsed is None:
-            raise AIUnavailable("The AI did not return a complete answer. Please try a narrower question.")
+            payload = json.dumps({"question": question.strip(), **packet}, ensure_ascii=False, allow_nan=False)
+            if config["provider"] == "openrouter":
+                response = client.chat.completions.create(
+                    model=config["model"],
+                    messages=[{"role": "system", "content": INSTRUCTIONS}, {"role": "user", "content": payload}],
+                    response_format={"type": "json_schema", "json_schema": {
+                        "name": "GroundedAnswer", "strict": True, "schema": GroundedAnswer.model_json_schema()}},
+                    max_tokens=1800, store=False,
+                    extra_body={"provider": {"require_parameters": True, "data_collection": "deny", "allow_fallbacks": False}},
+                )
+                if not response.choices:
+                    raise AIUnavailable("The AI did not return a complete answer. Please try a narrower question.")
+                choice = response.choices[0]
+                if choice.finish_reason != "stop" or choice.message.refusal or not choice.message.content:
+                    raise AIUnavailable("The AI did not return a complete answer. Please try a narrower question.")
+                parsed = GroundedAnswer.model_validate_json(choice.message.content)
+            else:
+                response = client.responses.parse(
+                    model=config["model"], instructions=INSTRUCTIONS, input=payload,
+                    text_format=GroundedAnswer, max_output_tokens=1800, store=False,
+                )
+                parsed = response.output_parsed
+                if response.status != "completed" or parsed is None:
+                    raise AIUnavailable("The AI did not return a complete answer. Please try a narrower question.")
         if not parsed.answer.strip():
             raise AIUnavailable("The AI returned an empty answer. Please try again.")
         allowed = {e["id"] for e in packet["evidence"]}
@@ -143,9 +159,12 @@ def answer(username: str, question: str, *, source="uploaded", report_id=None) -
         raise AIUnavailable("The AI account has reached a quota or rate limit. Check its API billing/limits and retry later.") from None
     except APITimeoutError:
         raise AIUnavailable("The AI request timed out. Your saved data is unchanged; please retry.") from None
-    except (OpenAIError, ValidationError):
+    except (OpenAIError, ValidationError) as exc:
         # Provider error bodies can contain request data. Never expose/log them.
+        if getattr(exc, "status_code", None) == 402:
+            raise AIUnavailable("The AI account has insufficient credits. Add credits or check the key's spending limit in OpenRouter.") from None
         raise AIUnavailable("The AI request failed. Check the configured model and connection, then retry.") from None
-    return {**parsed.model_dump(), "model": config["model"], "created_at": datetime.now(timezone.utc).isoformat(),
+    return {**parsed.model_dump(), "provider": config["provider_label"], "model": response.model or config["model"],
+            "created_at": datetime.now(timezone.utc).isoformat(),
             "scope": packet["scope"], "evidence": [e for e in packet["evidence"] if e["id"] in parsed.source_ids],
             "data_fingerprint": hashlib.sha256(json.dumps(packet, sort_keys=True).encode()).hexdigest()}

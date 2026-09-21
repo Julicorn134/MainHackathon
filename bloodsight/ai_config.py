@@ -18,7 +18,23 @@ def read_secrets() -> dict:
 
 def settings() -> dict:
     local = read_secrets()
+
+    def get(name, default=""):
+        return str(os.environ.get(name) or local.get(name) or default).strip()
+
+    provider = get("AI_PROVIDER", "openrouter" if get("OPENROUTER_API_KEY") else "openai").lower()
+    if provider not in ("openai", "openrouter"):
+        raise ValueError("Set AI_PROVIDER to openrouter or openai in server settings.")
+    router = provider == "openrouter"
+    key_name = "OPENROUTER_API_KEY" if router else "OPENAI_API_KEY"
+    key = get(key_name)
+    if not router and key.startswith("sk-or-"):
+        raise ValueError("This is an OpenRouter key. Set AI_PROVIDER=openrouter and use OPENROUTER_API_KEY.")
     return {
-        "api_key": str(os.environ.get("OPENAI_API_KEY") or local.get("OPENAI_API_KEY") or "").strip(),
-        "model": str(os.environ.get("OPENAI_MODEL") or local.get("OPENAI_MODEL") or "gpt-4.1-mini").strip(),
+        "provider": provider,
+        "provider_label": "OpenRouter" if router else "OpenAI",
+        "api_key": key,
+        "key_name": key_name,
+        "base_url": "https://openrouter.ai/api/v1" if router else "https://api.openai.com/v1",
+        "model": get("OPENROUTER_MODEL", "openai/gpt-4.1-mini") if router else get("OPENAI_MODEL", "gpt-4.1-mini"),
     }

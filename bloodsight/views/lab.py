@@ -186,7 +186,8 @@ def _patients() -> None:
     st.markdown("#### Lab codes without an account")
     free = store.unclaimed_lab_codes()
     if free:
-        st.markdown("\n".join(f"- **{c}**: report of {_day(_newest_report(c))}, waiting for a first open" for c in free))
+        st.markdown("\n".join(f"- **{c}**: report of {_day(_newest_report(c))}, waiting for a first open"
+                              for c in free))
         st.caption("These reports are published like the rest. They become visible when the person signs up "
                    "with the lab code on their letter.")
     else:
@@ -198,6 +199,11 @@ def _patients() -> None:
 def _notify(user: dict) -> None:
     ui.header("Notify patients", "A message from the lab, in the app of the people who agreed to hear from it")
     st.session_state.setdefault("sent_log", [])
+    # A send empties the form on the next run (widget keys cannot be written once the widgets exist),
+    # so a second press cannot send the same message again.
+    if st.session_state.pop("notify_reset", False):
+        st.session_state.update(notify_title="", notify_body="")
+    flash = st.session_state.pop("notify_flash", None)
 
     st.markdown("###### Templates")
     cols = st.columns(len(TEMPLATES) + 1)
@@ -233,14 +239,15 @@ def _notify(user: dict) -> None:
     if st.button("Send notification", type="primary", key="send_notify", disabled=not (title and body and targets)):
         count = store.send_message(user["username"], audience, title, body, to=one)
         st.session_state["sent_log"].insert(0, {"title": title, "audience": audience_label, "count": count})
+        st.session_state.update(notify_reset=True, notify_flash=st.session_state["sent_log"][0])
         st.rerun()
     if not (title and body):
         st.caption("A title and a message are needed before sending.")
 
+    if flash:  # shown once, right after the send it belongs to
+        st.success(f'Sent "{flash["title"]}" to {flash["count"]} '
+                   f'{"people" if flash["count"] != 1 else "person"} ({flash["audience"].lower()}).')
     if st.session_state["sent_log"]:
-        last = st.session_state["sent_log"][0]
-        st.success(f'Sent "{last["title"]}" to {last["count"]} '
-                   f'{"people" if last["count"] != 1 else "person"} ({last["audience"].lower()}).')
         st.markdown("#### Sent this session")
         for s in st.session_state["sent_log"]:
             st.markdown(f'<div class="bs-card" style="margin-bottom:8px"><b>{s["title"]}</b>'
@@ -255,14 +262,15 @@ def _donor_link() -> None:
     ui.header("Donor link", "The one fact the lab passes on")
     st.markdown(f'<div class="bs-card"><b>{b["donor_link"]} patients in this batch switched the donor part on.</b>'
                 f'<div class="units">Their blood type is filled in from this result. The lab passes nothing else '
-                f'to any blood centre.</div></div>', unsafe_allow_html=True)
+                f'to any blood centre. The figure counts every patient in the batch of {b["reports"]} reports; '
+                f'the list below shows only the accounts that exist in this demo.</div></div>', unsafe_allow_html=True)
 
-    st.markdown("#### Accounts with the donor part on")
+    st.markdown("#### Demo accounts with the donor part on")
     on = [p for p in sorted(store.patients(), key=lambda p: p["name"]) if _donor_on(p)]
     if on:
         for p in on:
             switches = ", ".join(SWITCH_LABELS[k] for k in ("nearby", "gave_before") if p["switches"].get(k))
-            st.markdown(f'<div class="bs-card" style="margin-bottom:8px;max-width:620px"><b>{p["name"]}</b>'
+            st.markdown(f'<div class="bs-card" style="margin-bottom:8px"><b>{p["name"]}</b>'
                         f'<div class="units">Blood type passed on: <b>{p.get("blood_type") or "filled in at publish"}'
                         f'</b></div><div class="sub">Donor part: {switches}. Nothing else about this person leaves '
                         f'the lab.</div></div>', unsafe_allow_html=True)

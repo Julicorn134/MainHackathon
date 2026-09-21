@@ -26,7 +26,7 @@ def css() -> None:
     .bs-card .units {font-size: .95rem; color: #52514e; margin: 2px 0 8px;}
     .bs-card .units b {color: #0b0b0b; font-size: 1.15rem;}
     .bs-chip {display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: .8rem; font-weight: 600;}
-    .bs-card .sub {font-size: .78rem; color: #898781; margin-top: 8px;}
+    .bs-card .sub {font-size: .8rem; color: #5f5d58; margin-top: 8px;}  /* 6.5:1 on white: it carries the "why you" line */
     .bs-alert {border-left: 5px solid #d03b3b; background: #fbeaea; border-radius: 8px; padding: 14px 18px; margin: 6px 0 4px;}
     .bs-alert.ok {border-color: #0a7d0a; background: #e6f4e6;}
     .bs-alert h4 {margin: 0 0 4px; color: #0b0b0b;}
@@ -46,10 +46,15 @@ def chip(risk: str, label: str | None = None) -> str:
 
 
 def sidebar(user: dict, pages: list[str]) -> str:
-    """Sidebar navigation for a role. Returns the selected page. Set st.session_state["nav"] to jump."""
+    """Sidebar navigation for a role. Returns the selected page. To jump: set st.session_state["_goto"], then st.rerun()."""
     with st.sidebar:
         st.markdown("### 🩸 BloodSight AI")
         st.caption(f"{user.get('title') or 'Patient of ' + store.LAB_NAME}")
+        # Page jumps: a view sets st.session_state["_goto"] = "<page>" and calls st.rerun(). Writing "nav"
+        # directly after this radio exists raises StreamlitAPIException, so the jump is applied here, before it.
+        goto = st.session_state.pop("_goto", None)
+        if goto in pages:
+            st.session_state["nav"] = goto
         if st.session_state.get("nav") not in pages:
             st.session_state["nav"] = pages[0]
         page = st.radio("Go to", pages, key="nav", label_visibility="collapsed")

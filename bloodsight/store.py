@@ -51,6 +51,12 @@ def today() -> date:
         return date.fromisoformat(max(line.split(",")[0][:10] for line in f.readlines()[1:]))
 
 
+def slot_label(slot: str) -> str:
+    """'2026-09-22 16:30' -> 'Tue 22 Sep · 16:30'."""
+    d = datetime.strptime(slot, "%Y-%m-%d %H:%M")
+    return f"{d:%a} {d.day} {d:%b} · {d:%H:%M}"
+
+
 def _stamp() -> str:
     return f"{today().isoformat()} {datetime.now():%H:%M:%S}"
 
@@ -195,6 +201,12 @@ def reset() -> None:
     save(_seed())
 
 
+def _short_name(name: str) -> str:
+    """'Alex Jansen' -> 'Alex J.': what a place may see of a person who booked."""
+    first, *rest = name.split()
+    return f"{first} {rest[-1][0]}." if rest else first
+
+
 def _public(username: str, u: dict) -> dict:
     return {"username": username, **{k: v for k, v in u.items() if k not in ("salt", "password_hash")}}
 
@@ -253,6 +265,13 @@ def register_patient(lab_code: str, username: str, password: str, name: str, pos
                  "heerlen": round(float(rng.uniform(18, 30)), 1)}
     state["users"][username] = _patient(password, name.strip() or username, lab_code, blood_type, postcode.strip(),
                                         distances, {"results": True, "nearby": False, "gave_before": False, **switches})
+    if switches.get("results", True) and BATCH_ID in state["lab"]["published_batches"]:
+        rep = next((r for r in REPORTS[lab_code] if r["id"] in BATCH_REPORT_IDS), None)
+        if rep:
+            flagged = [v for v in rep["values"] if v["flag"] != "In range"]
+            d = date.fromisoformat(rep["date"])
+            notify(username, "results", f"Your blood test of {d.day} {d:%b} is ready",
+                   f"{len(rep['values'])} values, {len(flagged)} out of range.", LAB_NAME, ref=rep["id"], state=state)
     save(state)
     return _public(username, state["users"][username])
 
@@ -273,7 +292,8 @@ def notify(to: str, kind: str, title: str, body: str, sender: str, ref: str | No
 
 def notifications(username: str, unread_only: bool = False) -> list[dict]:
     items = [n for n in load()["notifications"] if n["to"] == username and not (unread_only and n["read"])]
-    return sorted(items, key=lambda n: n["created_at"], reverse=True)
+    # Newest first. The id number breaks ties: several notifications can share one second.
+    return sorted(items, key=lambda n: (n["created_at"], int(n["id"].split("-")[1])), reverse=True)
 
 
 def unread_count(username: str) -> int:
@@ -392,7 +412,7 @@ def _matches(user: dict, req: dict) -> list[str] | None:
 _SEEN = [0.68, 0.80, 0.86, 0.89, 0.90]
 _BOOKED = [0.028, 0.052, 0.071, 0.083, 0.090]
 _DECLINED = [0.031, 0.050, 0.062, 0.070, 0.075]
-_FIRST = ["Lena", "Sam", "Noa", "Daan", "Emma", "Finn", "Sara", "Luuk", "Mila", "Jesse", "Eva", "Thijs"]
+_FIRST = ["Lena", "Bram", "Noa", "Daan", "Emma", "Finn", "Sara", "Luuk", "Mila", "Jesse", "Eva", "Thijs"]
 _LAST = "VKBJMSHRDWPG"
 
 
@@ -408,9 +428,12 @@ def get_request(request_id: str) -> dict | None:
 def create_request(created_by: str, place: str, blood_type: str, radius_km: float, slots: list[str],
                    target: int, message: str, urgency: str = "Shortage forecast", send: bool = False) -> dict:
     """Save a request as a draft, or send it straight away. A staff member always presses send."""
+    if send:
+        _refuse_duplicate(place, blood_type)
     state = load()
-    state["counter"] += 1
-    req = {"id": f"REQ-{state['counter']}", "place": place, "blood_type": blood_type, "radius_km": radius_km,
+    state["req_counter"] = state.get("req_counter") or max(int(r["id"].split("-")[1]) for r in state["requests"])
+    state["req_counter"] += 1
+    req = {"id": f"REQ-{state['req_counter']}", "place": place, "blood_type": blood_type, "radius_km": radius_km,
            "urgency": urgency, "slots": slots, "target": int(target), "message": message, "status": "draft",
            "created_by": created_by, "sent_at": None, "day": 0, "matched": match_count(blood_type, radius_km)}
     state["requests"].append(req)
@@ -418,10 +441,26 @@ def create_request(created_by: str, place: str, blood_type: str, radius_km: floa
     return send_request(req["id"]) if send else req
 
 
+def open_request(place: str, blood_type: str) -> dict | None:
+    """The sent, still open request of this place for this blood type, if there is one."""
+    return next((r for r in requests(place, "sent") if r["blood_type"] == blood_type), None)
+
+
+def _refuse_duplicate(place: str, blood_type: str, except_id: str | None = None) -> None:
+    dup = open_request(place, blood_type)
+    if dup and dup["id"] != except_id:
+        raise ValueError(f"A request for {blood_type} is already open ({dup['id']}). Close it before sending another: "
+                         "two open requests would ask the same people twice and count their bookings twice.")
+
+
 def send_request(request_id: str) -> dict:
-    """Send: every matching real account gets a 'need' notification and their monthly ask count goes up."""
+    """Send: every matching real account gets a 'need' notification and their monthly ask count goes up.
+    Raises ValueError if this place already has an open request for the same blood type."""
     state = load()
     req = next(r for r in state["requests"] if r["id"] == request_id)
+    if req["status"] != "draft":
+        return req
+    _refuse_duplicate(req["place"], req["blood_type"], except_id=request_id)
     req.update(status="sent", sent_at=_stamp(), day=1, matched=match_count(req["blood_type"], req["radius_km"]))
     for p in patients(state):
         if p.get("asked_this_month", 0) >= MAX_ASKS_PER_MONTH or _matches(p, req) is None:
@@ -430,7 +469,8 @@ def send_request(request_id: str) -> dict:
         notify(p["username"], "need", f"{PLACES[req['place']]['name']} needs {req['blood_type']}",
                req["message"], PLACES[req["place"]]["name"], ref=req["id"], state=state)
     save(state)
-    return req
+    _close_if_full(request_id)
+    return get_request(request_id)
 
 
 def close_request(request_id: str, reason: str = "closed by staff") -> None:
@@ -438,7 +478,19 @@ def close_request(request_id: str, reason: str = "closed by staff") -> None:
     for r in state["requests"]:
         if r["id"] == request_id:
             r.update(status="closed", closed_reason=reason)
+            for b in state["bookings"]:
+                if b["request"] == request_id and b["status"] == "booked" and reason != "target reached":
+                    b["status"] = "cancelled"
+                    notify(b["username"], "booking", f"Your slot {slot_label(b['slot'])} is no longer needed",
+                           f"{PLACES[r['place']]['name']} closed this request, so your booking was cancelled. "
+                           "Thank you for offering.", PLACES[r["place"]]["name"], ref=b["id"], state=state)
     save(state)
+
+
+def _close_if_full(request_id: str) -> None:
+    req = get_request(request_id)
+    if req and req["status"] == "sent" and request_stats(request_id)["booked"] >= req["target"]:
+        close_request(request_id, "target reached")
 
 
 def advance_day(request_id: str) -> dict:
@@ -448,8 +500,7 @@ def advance_day(request_id: str) -> dict:
     if req["status"] == "sent" and req["day"] < len(_SEEN):
         req["day"] += 1
     save(state)
-    if request_stats(request_id)["booked"] >= req["target"]:
-        close_request(request_id, "target reached")
+    _close_if_full(request_id)
     return get_request(request_id)
 
 
@@ -477,8 +528,7 @@ def request_bookings(request_id: str, sample: int = 6) -> dict:
         if b["request"] == request_id and b["status"] == "booked":
             u = state["users"][b["username"]]
             gave = _gave_at(u, req["place"])
-            first, *rest = u["name"].split()
-            named.append({"slot": b["slot"], "name": f"{first} {rest[-1][0]}." if rest else first,
+            named.append({"slot": b["slot"], "name": _short_name(u["name"]),
                           "blood_type": u.get("blood_type"), "real": True,
                           "note": f"gave here {date.fromisoformat(gave):%d %b}".replace(" 0", " ") if gave
                           else "patient of the lab, first time"})
@@ -537,24 +587,34 @@ def book(username: str, request_id: str, slot: str) -> dict:
     booking = {"id": f"B-{state['counter']}", "request": request_id, "username": username, "slot": slot,
                "place": req["place"], "status": "booked", "created_at": _stamp()}
     state["bookings"].append(booking)
-    name = state["users"][username]["name"]
+    name = _short_name(state["users"][username]["name"])
     place = PLACES[req["place"]]["name"]
-    notify(username, "booking", f"Booked: {slot} at {place}",
+    notify(username, "booking", f"Booked: {slot_label(slot)} at {place}",
            "Bring an ID. Eat and drink before you come. The centre does a short health check first "
            "and makes the final call.", place, ref=booking["id"], state=state)
     for staff, su in state["users"].items():
         if su["role"] == "centre" and su.get("org") == req["place"]:
-            notify(staff, "booking", f"New booking: {name}, {slot}", f"{req['blood_type']} request {request_id}.",
+            notify(staff, "booking", f"New booking: {name}, {slot_label(slot)}", f"{req['blood_type']} request {request_id}.",
                    "BloodSight", ref=booking["id"], state=state)
     save(state)
+    _close_if_full(request_id)
     return booking
 
 
 def cancel_booking(username: str, booking_id: str) -> None:
+    """Cancel, and tell the place: a silently shrinking count would leave staff waiting for a no-show."""
     state = load()
     for b in state["bookings"]:
-        if b["id"] == booking_id and b["username"] == username:
+        if b["id"] == booking_id and b["username"] == username and b["status"] == "booked":
             b["status"] = "cancelled"
+            name = _short_name(state["users"][username]["name"])
+            notify(username, "booking", f"Booking cancelled: {slot_label(b['slot'])} at {PLACES[b['place']]['name']}",
+                   "You cancelled this slot. It costs nothing, and the place has been told.",
+                   PLACES[b["place"]]["name"], ref=b["id"], state=state)
+            for staff, su in state["users"].items():
+                if su["role"] == "centre" and su.get("org") == b["place"]:
+                    notify(staff, "booking", f"Booking cancelled: {name}, {slot_label(b['slot'])}",
+                           f"Request {b['request']}. The slot is free again.", "BloodSight", ref=b["id"], state=state)
     save(state)
 
 
@@ -610,7 +670,7 @@ def batch() -> dict:
     state = load()["lab"]
     held = [{**h, "phoned": h["code"] in state["phoned"], "released": h["code"] in state["released"]}
             for h in BATCH_HELD]
-    return {"id": BATCH_ID, **BATCH_TOTALS,
+    return {"id": BATCH_ID, **BATCH_TOTALS, "ready": BATCH_TOTALS["ready"] + len(state["released"]),
             "code_mismatch": sum(1 for h in held if h["reason"] == "mismatch" and not h["released"]),
             "urgent": sum(1 for h in held if h["reason"] == "urgent" and not h["released"]),
             "held": held, "published": BATCH_ID in state["published_batches"],
@@ -656,4 +716,4 @@ def publish_batch(by: str) -> int:
             notify(name, "results", f"Your blood test of {date.fromisoformat(rep['date']):%d %b} is ready".replace(" 0", " "),
                    f"{len(rep['values'])} values, {len(out)} out of range.", LAB_NAME, ref=rep["id"], state=state)
     save(state)
-    return BATCH_TOTALS["ready"]
+    return BATCH_TOTALS["ready"] + len(state["lab"]["released"])

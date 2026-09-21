@@ -20,12 +20,20 @@ def get_backtest(df: pd.DataFrame) -> dict:
     return {bt: fx.backtest(df, bt) for bt in df.blood_type.unique()}
 
 
-def ui_request_button(bt: str, rec: dict) -> None:
+def ui_request_button(bt: str, rec: dict, open_req: dict | None = None) -> None:
     """The bridge to screen 2: a recommendation nobody can act on is only a report."""
-    if rec["risk"] != "Low" and st.button(f"Turn into a donor request for {bt}", type="primary", key=f"to_request_{bt}"):
-        st.session_state["request_prefill"] = {"blood_type": bt, "target": rec["target_units"],
-                                               "window": rec["window"], "days_to_safety": rec["days_to_safety"]}
+    if rec["risk"] == "Low":
+        return
+    label = f"Go to the open {bt} request" if open_req else f"Turn into a donor request for {bt}"
+    if st.button(label, type="primary", key=f"to_request_{bt}"):
+        if not open_req:
+            st.session_state["request_prefill"] = {"blood_type": bt, "target": rec["target_units"],
+                                                   "window": rec["window"], "days_to_safety": rec["days_to_safety"]}
+        st.session_state["_goto"] = "Requests"
         st.rerun()
+    if open_req:
+        st.caption(f"{open_req['id']} for {bt} is already open. Close it on the Requests page before sending "
+                   "another one for this blood type.")
 
 
 def render(user: dict) -> None:
@@ -96,7 +104,7 @@ def render(user: dict) -> None:
     base = fx.forecast_type(df, bt)
     rec = fx.recommend(df, bt, base, safety, warning)
     current = int(df[df.blood_type == bt].inventory.iloc[-1])
-    # Screen 2 feeds back into screen 1: donations already booked through open requests of this centre.
+    open_req = store.open_request(user["org"], bt)
     booked = store.expected_donations(user["org"], bt) if source == "demo" else 0
     booked_fc = fx.apply_campaign(base, booked, fx.CAMPAIGN_LEAD_DAYS + 1, 5) if booked else None
 
@@ -175,9 +183,11 @@ def render(user: dict) -> None:
 
         ymax = max(hist.inventory.max(), b.high.max(), s.inventory.max(), warning,
                    booked_fc.inventory.max() if booked_fc is not None else 0) * 1.12
+        # The title lives in the page, not in the figure: with four traces the legend wraps to two rows
+        # and a Plotly title in the same top margin collides with it.
+        st.markdown(f"##### {bt} inventory: last 30 days and 14-day projection")
         fig.update_layout(
-            title=dict(text=f"{bt} inventory: last 30 days and 14-day projection", font=dict(size=16, color=ui.INK)),
-            height=430, margin=dict(l=10, r=10, t=70, b=10), hovermode="x unified",
+            height=430, margin=dict(l=10, r=10, t=76, b=10), hovermode="x unified",
             plot_bgcolor="#fcfcfb", paper_bgcolor="#fcfcfb", font=dict(color=ui.INK_2),
             legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="right", x=1),
             yaxis=dict(title="Units", range=[0, ymax], gridcolor=ui.GRID, zeroline=False),
@@ -223,10 +233,20 @@ def render(user: dict) -> None:
                 unsafe_allow_html=True)
         if booked:
             after_booked = fx.assess(booked_fc, safety, warning)
-            st.markdown(f"**{booked:,} donations are already booked** through open {bt} requests of this centre. "
-                        f"They are in the chart as a dotted line. Projected 14-day low with them: "
+            # One request per blood type can be open, so name it: the count comes from that one request.
+            one = f"{open_req['id']}, the open {bt} request of this centre" if open_req \
+                else f"the open {bt} requests of this centre"
+            st.markdown(f"**{booked:,} donation{'s' if booked != 1 else ''} "
+                        f"{'are' if booked != 1 else 'is'} already booked** through {one}. "
+                        f"{'They are' if booked != 1 else 'It is'} in the chart as a dotted line. "
+                        f"Projected 14-day low with {'them' if booked != 1 else 'it'}: "
                         f"{after_booked['min_inventory']:,.0f} units.")
-        ui_request_button(bt, rec)
+        elif open_req:
+            st.markdown(f"**{open_req['id']} for {bt} is open** and nobody has booked a slot yet, so the projection "
+                        "above is the one without donations. Bookings appear here as they come in.")
+        else:
+            st.caption(f"No {bt} request of this centre is open, so no booked donations are in the projection.")
+        ui_request_button(bt, rec, open_req)
     with why_col:
         st.markdown("**Why the model sees this**")
         for d in rec["drivers"]:

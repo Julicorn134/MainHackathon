@@ -36,14 +36,15 @@ def _day(value: str | date) -> str:
 
 
 def _slot(value: str) -> str:
-    """2026-09-22 16:30 -> Tue 22 Sep · 16:30."""
-    return f"{_day(value)} · {value[11:16]}" if len(value) > 10 else _day(value)
+    """2026-09-22 16:30 -> Tue 22 Sep · 16:30, in store's shared wording. Guarded for a request without slots."""
+    return store.slot_label(value) if len(value) >= 16 else value
 
 
-def _slot_options(days: int) -> list[str]:
+def _slot_options(days: int, times: list[str] | None = None) -> list[str]:
     """The next `days` days, a few times a day, as "YYYY-MM-DD HH:MM"."""
     start = store.today()
-    return [f"{(start + timedelta(days=d)).isoformat()} {t}" for d in range(1, days + 1) for t in SLOT_TIMES]
+    return [f"{(start + timedelta(days=d)).isoformat()} {t}"
+            for d in range(1, days + 1) for t in (times if times is not None else SLOT_TIMES)]
 
 
 def _message(blood_type: str, slots: list[str]) -> str:
@@ -55,6 +56,11 @@ def _message(blood_type: str, slots: list[str]) -> str:
     days = sorted({s[:10] for s in slots})
     span = _day(days[0]) if len(days) == 1 else f"{_day(days[0])} to {_day(days[-1])}"
     return f"{head}: slots from {span}."
+
+
+def _order(req: dict) -> int:
+    """Newest first: REQ-10 is newer than REQ-9, so sort on the number, not the string."""
+    return int(req["id"].split("-")[-1])
 
 
 def _chip(status: str) -> str:
@@ -69,39 +75,84 @@ def _rules(blood_type: str, radius: int) -> str:
             f"asked fewer than {store.MAX_ASKS_PER_MONTH} times this month.")
 
 
+_PLAIN = 'style="text-align:left;font-weight:400"'          # bs-rec makes the last cell bold and right
+
+
+# Fixed widths so the columns line up from one request's table to the next down the Bookings page.
+_COLS = ('<colgroup><col style="width:22%"><col style="width:18%"><col style="width:11%">'
+         '<col style="width:34%"><col style="width:15%"></colgroup>')
+
+
 def _booking_table(named: list[dict]) -> str:
+    head = (f'<tr style="color:#898781;font-size:.8rem"><td>Slot</td><td>Name</td><td>Blood type</td>'
+            f'<td>Note</td><td {_PLAIN}>Booked by</td></tr>')
     rows = "".join(
         f"<tr><td>{_slot(b['slot'])}</td><td><b>{b['name']}</b></td><td>{b['blood_type'] or ''}</td>"
-        f"<td>{b['note']}</td><td>{'app account' if b['real'] else 'simulated'}</td></tr>" for b in named)
-    return f'<div class="bs-rec" style="margin-bottom:8px"><table>{rows}</table></div>'
+        f"<td>{b['note']}</td><td {_PLAIN}>{'app account' if b['real'] else 'simulated'}</td></tr>"
+        for b in named)
+    return (f'<div class="bs-rec" style="margin-bottom:8px">'
+            f'<table style="table-layout:fixed">{_COLS}{head}{rows}</table></div>')
 
 
 # ------------------------------------------------------------------------------ new request form
 
+FORM_KEYS = ("req_note", "req_seed", "req_days", "req_bt", "req_radius", "req_target", "req_times",
+             "req_message", "req_message_auto")
+
+
 def _init_form() -> None:
-    """Seed the form, and fill it from the outlook recommendation when one was handed over."""
+    """Seed the form, and fill it from the outlook recommendation when one was handed over.
+
+    Streamlit drops the state of widgets that a run did not draw, so the recommendation is also kept
+    in "req_seed": leaving the page and coming back must not quietly change the target under the caption.
+    """
     pre = st.session_state.pop("request_prefill", None)
     if pre:
         window = min(max(int(pre.get("window") or 5), 3), 7)
-        st.session_state["req_days"] = window
-        st.session_state["req_bt"] = pre["blood_type"]
-        st.session_state["req_radius"] = 25
-        st.session_state["req_target"] = int(pre["target"])
-        st.session_state["req_slots"] = _slot_options(window)
+        st.session_state["req_seed"] = {"days": window, "bt": pre["blood_type"], "target": int(pre["target"])}
         st.session_state["req_note"] = (f"Filled in from the recommendation: {int(pre['target'])} donations "
                                         f"in {window} days.")
-        st.session_state.pop("req_message", None)       # the text is rebuilt for this blood type
-        st.session_state.pop("req_message_auto", None)
-    st.session_state.setdefault("req_days", SIM_DAYS)
-    st.session_state.setdefault("req_bt", "O-")
+        for k in ("req_days", "req_bt", "req_target", "req_message", "req_message_auto"):
+            st.session_state.pop(k, None)               # the seed below fills these in again
+    seed = st.session_state.get("req_seed", {})
+    st.session_state.setdefault("req_days", seed.get("days", SIM_DAYS))
+    st.session_state.setdefault("req_bt", seed.get("bt", "O-"))
     st.session_state.setdefault("req_radius", 25)
-    st.session_state.setdefault("req_target", 200)
-    st.session_state.setdefault("req_slots", _slot_options(st.session_state["req_days"]))
+    st.session_state.setdefault("req_target", str(seed.get("target", 200)))
+    st.session_state.setdefault("req_times", list(SLOT_TIMES))
+
+
+def _clear_form() -> None:
+    """A created request leaves the form on its own default: the recommendation has been acted on."""
+    for k in FORM_KEYS:
+        st.session_state.pop(k, None)
+
+
+MAX_TARGET = 2000
+
+
+def _target(text: str) -> int | None:
+    """The typed target as a whole number, or None when it is not one.
+
+    A number_input silently keeps its old value when staff type something out of range, so the request
+    would be sent with a target nobody chose. Here what is sent is what is on screen, or nothing is sent.
+    """
+    try:
+        n = int(str(text).strip())
+    except ValueError:
+        return None
+    return n if 1 <= n <= MAX_TARGET else None
+
+
+def _open_notice(req: dict) -> str:
+    """Why a second request of the same type is refused, in the words of the request that is already open."""
+    s = store.request_stats(req["id"])
+    return (f"{req['id']} for {req['blood_type']} is open: day {min(req['day'], SIM_DAYS)} of {SIM_DAYS}, "
+            f"{s['booked']:,} of {req['target']:,} booked. Close it before sending another.")
 
 
 def _new_request_form(user: dict) -> None:
     _init_form()
-    st.markdown("#### New request")
     if st.session_state.get("req_note"):
         st.caption(st.session_state["req_note"])
 
@@ -111,9 +162,17 @@ def _new_request_form(user: dict) -> None:
         blood_type = c1.selectbox("Blood type", TYPES, key="req_bt")
         radius = c2.radio("How far from the centre", RADIUS_OPTIONS, key="req_radius", horizontal=True,
                           format_func=lambda km: f"{km} km")
-        options = _slot_options(st.session_state["req_days"])
-        slots = st.multiselect("Slots offered", options, key="req_slots", format_func=_slot)
-        target = st.number_input("Target donations", min_value=1, max_value=2000, step=10, key="req_target")
+        c3, c4 = st.columns(2)
+        days = c3.slider("Slots: days from tomorrow", 3, 7, key="req_days")
+        times = c4.multiselect("Times a day", SLOT_TIMES, key="req_times")
+        slots = _slot_options(days, times)
+        st.caption(f"{len(slots)} slots offered: {_day(store.today() + timedelta(days=1))} to "
+                   f"{_day(store.today() + timedelta(days=days))}"
+                   + (f", at {', '.join(times)}." if times else ". Choose at least one time."))
+        target = _target(st.text_input("Target donations", key="req_target",
+                                       help=f"A whole number of donations, from 1 to {MAX_TARGET:,}."))
+        if target is None:
+            st.caption(f"Target donations must be a whole number from 1 to {MAX_TARGET:,}.")
         # The text is regenerated when the blood type or the slots change, unless staff edited it by hand.
         auto = _message(blood_type, slots)
         if st.session_state.get("req_message", st.session_state.get("req_message_auto")) \
@@ -136,25 +195,45 @@ def _new_request_form(user: dict) -> None:
                    "from earlier requests.")
         st.markdown("**You see a count, not names. A name appears only when that person books a slot.**")
 
+    # One open request per blood type: a second one would ask the same people twice and count them twice.
+    already_open = store.open_request(PLACE, blood_type)
+    if already_open:
+        st.warning(_open_notice(already_open))
+
     b1, b2, _ = st.columns([1.2, 1, 2.2])
     problem = ("Choose at least one slot." if not slots else
-               "Write the message people read." if not message.strip() else None)
-    if b1.button(f"Send to {m['total']:,} people", type="primary", use_container_width=True, key="send_new"):
+               "Write the message people read." if not message.strip() else
+               f"Set a target of at least 1 donation, at most {MAX_TARGET:,}." if target is None else None)
+    if b1.button(f"Send to {m['total']:,} people", type="primary", use_container_width=True, key="send_new",
+                 disabled=already_open is not None,
+                 help=_open_notice(already_open) if already_open else None):
         if problem:
-            st.warning(problem)
+            st.error(problem)
         else:
-            req = store.create_request(user["username"], PLACE, blood_type, radius, slots,
-                                       int(target), message.strip(), send=True)
-            st.session_state["req_flash"] = f"{req['id']} sent to {req['matched']['total']:,} people."
-            st.rerun()
+            try:
+                req = store.create_request(user["username"], PLACE, blood_type, radius, slots,
+                                           int(target), message.strip(), send=True)
+            except ValueError as e:
+                st.error(str(e))
+            else:
+                st.session_state["req_flash"] = f"{req['id']} sent to {req['matched']['total']:,} people."
+                _clear_form()
+                st.session_state["req_form_open"] = False       # the sent card below is the next thing to read
+                st.rerun()
     if b2.button("Save draft", use_container_width=True, key="save_draft"):
         if problem:
-            st.warning(problem)
+            st.error(problem)
         else:
-            req = store.create_request(user["username"], PLACE, blood_type, radius, slots,
-                                       int(target), message.strip(), send=False)
-            st.session_state["req_flash"] = f"{req['id']} saved as a draft. You can send it later."
-            st.rerun()
+            try:
+                req = store.create_request(user["username"], PLACE, blood_type, radius, slots,
+                                           int(target), message.strip(), send=False)
+            except ValueError as e:
+                st.error(str(e))
+            else:
+                st.session_state["req_flash"] = f"{req['id']} saved as a draft. You can send it later."
+                _clear_form()
+                st.session_state["req_form_open"] = False
+                st.rerun()
     st.caption("The model recommends. A staff member presses send.")
 
 
@@ -172,9 +251,13 @@ def _request_card(req: dict) -> None:
         if req["status"] == "draft":
             st.caption(f"{req['matched']['total']:,} people match. Nobody has been asked yet.")
             if st.button(f"Send to {req['matched']['total']:,} people", type="primary", key=f"send_{req['id']}"):
-                store.send_request(req["id"])
-                st.session_state["req_flash"] = f"{req['id']} sent."
-                st.rerun()
+                try:
+                    store.send_request(req["id"])
+                except ValueError as e:
+                    st.error(str(e))
+                else:
+                    st.session_state["req_flash"] = f"{req['id']} sent."
+                    st.rerun()
             return
 
         st.markdown(f"**Day {min(req['day'], SIM_DAYS)} of {SIM_DAYS}**")
@@ -183,8 +266,10 @@ def _request_card(req: dict) -> None:
         k[1].metric("Seen", f"{stats['seen']:,}")
         k[2].metric("Booked", f"{stats['booked']:,}")
         k[3].metric("Not this time", f"{stats['not_this_time']:,}")
+        # The bar stops at full; the text keeps the true numbers, so an over-target request reads honestly.
         st.progress(min(stats["booked"] / max(req["target"], 1), 1.0),
-                    text=f"{stats['booked']:,} of {req['target']:,} booked")
+                    text=f"{stats['booked']:,} of {req['target']:,} booked"
+                         + (" · target reached" if stats["booked"] >= req["target"] else ""))
 
         bk = store.request_bookings(req["id"], sample=3)
         if bk["named"]:
@@ -195,16 +280,33 @@ def _request_card(req: dict) -> None:
             st.caption("No bookings yet. A name appears only when someone books a slot.")
 
         if req["status"] == "closed":
-            st.caption(f"Closed: {req.get('closed_reason', 'closed by staff')}.")
+            if req.get("closed_reason") == "target reached":
+                st.success(f"Target reached: {stats['booked']:,} booked, target {req['target']:,}. "
+                           "The request closed itself.")
+            else:
+                st.caption(f"Closed: {req.get('closed_reason', 'closed by staff')}.")
             return
+        # Closing is not only a status change: it cancels the slots people booked, so say so before the click.
+        real_booked = sum(1 for b in bk["named"] if b["real"])
+        plural = "s" if real_booked != 1 else ""
+        close_help = ("Closing takes the request off everyone's Needs, cancels the slots booked on it "
+                      "and tells those people their slot is no longer needed.")
+        st.caption(close_help + (f" {real_booked} slot{plural} booked by an app account "
+                                 f"{'are' if real_booked != 1 else 'is'} on this request."
+                                 if real_booked else ""))
+        confirm = True
+        if real_booked:
+            confirm = st.checkbox(f"Also cancel {real_booked} booked slot{plural}", key=f"confirm_close_{req['id']}")
         a1, a2, _ = st.columns([1.2, 1, 2.2])
         if a1.button("Simulate next day", key=f"day_{req['id']}", help="Demo control: moves this request one day "
                      "forward in the simulated response curve.", disabled=req["day"] >= SIM_DAYS):
             store.advance_day(req["id"])
             st.rerun()
-        if a2.button("Close request", key=f"close_{req['id']}"):
+        if a2.button("Close request", key=f"close_{req['id']}", help=close_help, disabled=not confirm):
             store.close_request(req["id"])
-            st.session_state["req_flash"] = f"{req['id']} closed. It disappears from everyone's Needs."
+            st.session_state["req_flash"] = (
+                f"{req['id']} closed. It disappears from everyone's Needs."
+                + (f" {real_booked} booked slot{plural} cancelled, those people were told." if real_booked else ""))
             st.rerun()
 
 
@@ -212,10 +314,13 @@ def _requests_page(user: dict, flash: str | None) -> None:
     ui.header("Requests", "A request, before and after sending.")
     if flash:
         st.success(flash)
-    _new_request_form(user)
+    if st.session_state.get("request_prefill"):
+        st.session_state["req_form_open"] = True        # the outlook handed a recommendation over: open the form
+    with st.expander("New request", expanded=st.session_state.setdefault("req_form_open", True)):
+        _new_request_form(user)
     st.divider()
     st.markdown("#### This centre's requests")
-    mine = sorted(store.requests(PLACE), key=lambda r: r["id"], reverse=True)
+    mine = sorted(store.requests(PLACE), key=_order, reverse=True)      # newest first
     if not mine:
         st.caption("No requests yet. The form above makes the first one.")
         return
@@ -233,7 +338,7 @@ def _bookings_page() -> None:
         st.caption("No request has been sent yet.")
         return
     st.caption("Bookings by real accounts of the app come first. The rest are simulated for the demo.")
-    for req in sorted(live, key=lambda r: r["id"], reverse=True):
+    for req in sorted(live, key=_order, reverse=True):
         bk = store.request_bookings(req["id"])
         st.markdown(f"##### {req['blood_type']} · {req['id']} · {bk['total']:,} booked")
         if not bk["named"]:
@@ -247,11 +352,7 @@ def _bookings_page() -> None:
 # ------------------------------------------------------------------------------------- render
 
 def render(user: dict) -> None:
-    # The outlook hands a recommendation over by setting "request_prefill" and "nav". The nav radio already
-    # exists by then, so that second write throws; the jump is done here instead, before the radio is built.
-    if st.session_state.get("request_prefill") is not None:
-        st.session_state["nav"] = "Requests"
-    page = ui.sidebar(user, PAGES)
+    page = ui.sidebar(user, PAGES)          # the outlook's handover jumps here through ui.sidebar's "_goto"
     flash = st.session_state.pop("req_flash", None)
     if page == "Outlook":
         from views import outlook

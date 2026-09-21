@@ -52,7 +52,14 @@ def css() -> None:
     h2 {font-size: 20px !important; line-height: 1.3 !important; margin: 0 0 2px !important;}
     h3 {font-size: 15px !important; margin: 0 0 4px !important;}
     body, p, li, .stMarkdown {font-size: 14px; line-height: 1.55; color: #111827;}
-    .block-container {padding-top: 1.8rem; padding-bottom: 3rem; max-width: 1400px;}
+    .block-container {padding-top: 4.4rem; padding-bottom: 3rem; max-width: 1400px; animation: bsfade .22s ease-out;}
+    @keyframes bsfade {from {opacity: 0; transform: translateY(4px);} to {opacity: 1; transform: none;}}
+    [data-stale="true"] {opacity: 0 !important; transition: none !important;}
+    [data-testid="stHeader"] {background: transparent;}
+    [data-testid="stBaseButton-primary"] p, [data-testid="stBaseButton-primary"] span, [data-testid="stBaseButton-primary"] div,
+    [data-testid="stBaseButton-primaryFormSubmit"] p, [data-testid="stBaseButton-primaryFormSubmit"] span, [data-testid="stBaseButton-primaryFormSubmit"] div,
+    [data-testid="stBaseButton-primaryDownload"] p, [data-testid="stBaseButton-primaryDownload"] span {color: #ffffff !important;}
+    [data-testid="stBaseButton-primary"]:disabled, [data-testid="stBaseButton-primaryFormSubmit"]:disabled {background: #e9b7bf !important; border-color: #e9b7bf !important;}
     [data-testid="stBaseButton-primary"], [data-testid="stBaseButton-secondary"],
     [data-testid="stBaseButton-primaryFormSubmit"], [data-testid="stBaseButton-secondaryFormSubmit"],
     [data-testid="stDownloadButton"] button, [data-testid="stBaseButton-secondaryDownload"],

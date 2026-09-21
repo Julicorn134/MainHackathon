@@ -19,13 +19,34 @@ import ui
 PAGES = ["Results", "Needs", "Donations", "Ask", "Notifications", "Me"]
 
 SUBTITLE = {
-    "Results": "Your blood tests, as the lab printed them.",
-    "Needs": "Places that need blood you can give.",
-    "Donations": "What you gave and where it went.",
-    "Ask": "Questions about your own results and donations.",
-    "Notifications": "Everything the lab and the places sent you.",
-    "Me": "Your switches, your details.",
+    "Results": "Your lab reports",
+    "Needs": "Open requests near you",
+    "Donations": "Your donations and bookings",
+    "Ask": "Your results, donations and needs",
+    "Notifications": "From the lab and the places",
+    "Me": "Switches and details",
 }
+INK, INK_MUTED, BORDER = "#111827", "#6b7280", "#e5e4df"
+OK_GREEN, WARN_AMBER = "#15803d", "#b45309"
+CSS = """<style>
+.bs-h{font-size:15px;font-weight:600;color:#111827;margin:18px 0 8px}
+.bs-c{font-size:13px;color:#111827;padding:7px 0;border-bottom:1px solid #e5e4df;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bs-r{text-align:right;font-variant-numeric:tabular-nums}
+.bs-hd{font-size:11.5px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;padding:0 0 6px;border-bottom:1px solid #e5e4df}
+.bs-sep{font-size:12.5px;font-weight:600;color:#6b7280;padding:16px 0 4px;border-top:1px solid #e5e4df;margin-top:2px}
+.bs-note{font-size:12.5px;color:#6b7280}
+.bs-line{font-size:13px;color:#4b5563}
+div[class*="st-key-rowbtn_"]{border-bottom:1px solid #e5e4df}
+div[class*="st-key-rowbtn_"] button{border:0 !important;background:transparent !important;color:#6b7280 !important;box-shadow:none !important;padding:0 !important;height:31px !important;min-height:31px !important;justify-content:flex-start !important}
+div[class*="st-key-rowbtn_"] button:hover{color:#c8102e !important;text-decoration:underline}
+div[class*="st-key-rowbtn_"] button p{font-size:12.5px !important;font-weight:500 !important}
+div[class*="st-key-book_"] button{height:32px !important;min-height:32px !important;width:66px !important;min-width:66px !important;padding:0 !important}
+div[class*="st-key-book_"] button p{font-size:13px !important}
+div[class*="st-key-decline_"] button,div[class*="st-key-quiet_"] button{border:0 !important;background:transparent !important;color:#6b7280 !important;box-shadow:none !important;padding:0 !important;height:32px !important;min-height:32px !important;justify-content:flex-start !important}
+div[class*="st-key-decline_"] button:hover,div[class*="st-key-quiet_"] button:hover{color:#c8102e !important;text-decoration:underline}
+div[class*="st-key-decline_"] button p,div[class*="st-key-quiet_"] button p{font-size:13px !important}
+div[class*="st-key-sug_"] button p{font-size:13px !important}
+</style>"""
 URGENCY_RISK = {"Shortage forecast": "Critical", "This week": "Medium", "This month": "Low"}
 
 # What a value is, in plain words. The value screen and the assistant both build their text from
@@ -64,7 +85,9 @@ SYNONYMS = {
     "tsh": ["thyroid"], "rbc_count": ["red blood cell"], "vitd": ["vitamin d"], "b12": ["vitamin b12"],
     "trig": ["triglyceride"], "creat": ["creatinine"], "mcv": ["red cell size"],
 }
-SUGGESTIONS = ["Why is my ferritin low?", "Can I give blood?", "Where did my blood go?"]
+SUGGESTIONS = ["Why is my ferritin low?", "What does my ferritin mean?", "What is my haemoglobin?",
+               "Can I give blood?", "Where did my blood go?", "What needs my blood near me?",
+               "Do I need a doctor?"]
 # Question routing. Every entry is a regular expression read against the lowered question. The
 # refusals are checked before any value is looked up, so "am I healthy enough to donate" is answered
 # as a question about giving blood and never as a read-out of a liver value.
@@ -114,10 +137,22 @@ def _num(v: float) -> str:
 
 
 def _flag_chip(flag: str) -> str:
-    """Out of range is amber, in range is green. Color never travels without an icon and a label."""
-    bg, fg, icon = {"Low": ("#fdf3d9", "#b97d00", "🟡"), "High": ("#fdf3d9", "#b97d00", "🟡")}.get(
-        flag, ("#e6f4e6", "#0a7d0a", "🟢"))
-    return f'<span class="bs-chip" style="background:{bg};color:{fg}">{icon} {flag}</span>'
+    """Out of range is amber, in range is green: a dot plus plain coloured text, never a pill."""
+    fg = WARN_AMBER if flag in ("Low", "High") else OK_GREEN
+    return (f'<span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;'
+            f'color:{fg}"><span style="width:6px;height:6px;border-radius:50%;background:{fg};'
+            f'display:inline-block"></span>{flag}</span>')
+
+
+def _tag(text: str, color: str = INK_MUTED) -> str:
+    """A plain small tag such as 'You gave here': a dot and text, no box."""
+    return (f'<span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;'
+            f'color:{color}"><span style="width:6px;height:6px;border-radius:50%;background:{color};'
+            f'display:inline-block"></span>{text}</span>')
+
+
+def _h(text: str) -> None:
+    st.markdown(f'<div class="bs-h">{text}</div>', unsafe_allow_html=True)
 
 
 def _close_value() -> None:
@@ -142,13 +177,12 @@ def _link_lab_code(user: dict, where: str) -> None:
     The store raises ValueError with the reason a code is refused, so the message the donor reads is the
     store's own wording and never a rewritten one.
     """
-    st.markdown('<div class="bs-card" style="padding:18px 22px;margin-bottom:10px">'
-                '<b>Link your lab results</b>'
-                '<div class="units">Your lab code is printed on your lab letter. '
-                'Enter it once and your results appear here.</div></div>', unsafe_allow_html=True)
+    _h("Link your lab results")
+    st.markdown('<div class="bs-note">Your lab code is printed on your lab letter.</div>',
+                unsafe_allow_html=True)
     left, right = st.columns([2.2, 1], vertical_alignment="bottom")
     code = left.text_input("Lab code", placeholder="BL-4821", key=f"labcode_{where}")
-    if right.button("Link", key=f"labcode_btn_{where}", type="primary", use_container_width=True):
+    if right.button("Link", key=f"labcode_btn_{where}", type="primary"):
         try:
             store.link_lab_code(user["username"], code)
         except ValueError as exc:
@@ -228,24 +262,29 @@ def _doctor_summary(user: dict, report: dict) -> str:
 
 # -------------------------------------------------------------------------------- results
 
-def _value_cards(values: list[dict], report: dict, prefix: str) -> None:
-    """Value cards in a grid, each with a button that opens the value."""
-    for row_start in range(0, len(values), 3):
-        row = values[row_start:row_start + 3]
-        for col, v in zip(st.columns(3), row):
-            with col:
-                st.markdown(f'<div class="bs-card" style="padding:16px 20px">'
-                            f'<div class="units" style="margin:0 0 6px">{v["name"]}</div>'
-                            f'<div class="bt">{_num(v["value"])} <span style="font-size:.9rem;font-weight:400;'
-                            f'color:{ui.INK_2}">{v["unit"]}</span></div>'
-                            f'<div class="sub" style="margin:6px 0 8px">Range printed by the lab: '
-                            f'{_num(v["low"])} to {_num(v["high"])}</div>{_flag_chip(v["flag"])}</div>',
-                            unsafe_allow_html=True)
-                if st.button(f"Open {v['name']}", key=f"{prefix}_{report['id']}_{v['key']}",
-                             use_container_width=True):
-                    _close_value()
-                    st.session_state["open_value"] = (report["id"], v["key"])
-                    st.rerun()
+ROW_COLS = [3.4, 1.7, 2.0, 1.3, 1.0]
+
+
+def _table_head() -> None:
+    cols = st.columns(ROW_COLS, gap="small")
+    for col, (label, cls) in zip(cols, [("Test", "bs-hd"), ("Result", "bs-hd bs-r"),
+                                        ("Reference range", "bs-hd bs-r"), ("Flag", "bs-hd"), ("", "bs-hd")]):
+        col.markdown(f'<div class="{cls}">{label}</div>', unsafe_allow_html=True)
+
+
+def _value_row(v: dict, report: dict, prefix: str) -> None:
+    """One line of the report, as a lab prints it: name, result, range, flag, and a quiet way in."""
+    cols = st.columns(ROW_COLS, gap="small", vertical_alignment="center")
+    cols[0].markdown(f'<div class="bs-c">{v["name"]}</div>', unsafe_allow_html=True)
+    cols[1].markdown(f'<div class="bs-c bs-r">{_num(v["value"])} '
+                     f'<span style="color:{INK_MUTED}">{v["unit"]}</span></div>', unsafe_allow_html=True)
+    cols[2].markdown(f'<div class="bs-c bs-r">{_num(v["low"])} to {_num(v["high"])}</div>',
+                     unsafe_allow_html=True)
+    cols[3].markdown(f'<div class="bs-c">{_flag_chip(v["flag"])}</div>', unsafe_allow_html=True)
+    if cols[4].button("Details", key=f"rowbtn_{prefix}_{report['id']}_{v['key']}"):
+        _close_value()
+        st.session_state["open_value"] = (report["id"], v["key"])
+        st.rerun()
 
 
 def _trend_chart(hist: list[dict], v: dict) -> None:
@@ -269,8 +308,8 @@ def _trend_chart(hist: list[dict], v: dict) -> None:
                       line=dict(color="#d03b3b", width=1.5, dash="dot"))
         fig.add_annotation(xref="paper", x=0.01, y=level, text=f"{label} · {_num(level)}", showarrow=False,
                            xanchor="left", yanchor="bottom", font=dict(size=11, color=ui.INK_2))
-    fig.update_layout(title=dict(text=f"{v['name']}: your tests", font=dict(size=15, color=ui.INK)),
-                      height=300, margin=dict(l=10, r=10, t=50, b=10), showlegend=False,
+    fig.update_layout(title=None,
+                      height=220, margin=dict(l=10, r=10, t=14, b=10), showlegend=False,
                       plot_bgcolor="#fcfcfb", paper_bgcolor="#fcfcfb", font=dict(color=ui.INK_2),
                       yaxis=dict(title=v["unit"], range=[lo, hi], gridcolor=ui.GRID, zeroline=False),
                       xaxis=dict(showgrid=False, linecolor=ui.AXIS))
@@ -288,32 +327,31 @@ def _value_page(user: dict, report: dict, key: str) -> None:
     if v is None:
         _close_value()
         st.rerun()
-    back, _ = st.columns([1, 4])
-    if back.button("Back to results", key="back_to_results", type="primary", use_container_width=True):
+    if st.button("Back to results", key="quiet_back_to_results"):
         _close_value()
         st.rerun()
 
-    st.markdown(f"### {v['name']}")
-    st.markdown(f'<div class="bs-card" style="padding:18px 22px">'
-                f'<div class="bt" style="font-size:2.1rem">{_num(v["value"])} '
-                f'<span style="font-size:1rem;font-weight:400;color:{ui.INK_2}">{v["unit"]}</span> '
-                f'{_flag_chip(v["flag"])}</div>'
-                f'<div class="sub">Range printed by the lab: {_num(v["low"])} to {_num(v["high"])} {v["unit"]}'
-                f'</div></div>', unsafe_allow_html=True)
-
     hist = store.value_history(user["username"], key)
+    st.markdown(f'<div style="font-size:20px;font-weight:600;color:{INK};margin:2px 0 2px">{v["name"]}</div>'
+                f'<div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap">'
+                f'<span style="font-size:24px;font-weight:600;color:{INK}">{_num(v["value"])} '
+                f'<span style="font-size:13px;font-weight:400;color:{INK_MUTED}">{v["unit"]}</span></span>'
+                f'{_flag_chip(v["flag"])}'
+                f'<span style="font-size:12.5px;color:{INK_MUTED}">Reference range '
+                f'{_num(v["low"])} to {_num(v["high"])} {v["unit"]}</span></div>', unsafe_allow_html=True)
+
     left, right = st.columns([1.5, 1], gap="large")
     with left:
         _trend_chart(hist, v)
     with right:
-        st.markdown("##### BloodSight AI explanation")
-        st.markdown(f'<div class="bs-rec" style="padding:16px 20px">{_ai_text(v, hist)}</div>',
-                    unsafe_allow_html=True)
-        st.caption("This text is not medical advice and it is not a diagnosis.")
+        _h("About this value")
+        st.markdown(f'<div class="bs-line">{_ai_text(v, hist)}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="bs-note" style="margin-top:8px">Written from your own reports. '
+                    f'Not medical advice and not a diagnosis. Source: report of {_short(report["date"])}, '
+                    f'line {v["line"]}.</div>', unsafe_allow_html=True)
         if key in DONOR_NOTES:
-            st.markdown(f'<div class="bs-card" style="margin-top:8px;padding:16px 20px"><b>For donors</b>'
-                        f'<div class="units">{DONOR_NOTES[key]}</div></div>', unsafe_allow_html=True)
-    st.caption(f"Source: report of {_short(report['date'])}, line {v['line']}")
+            st.markdown(f'<div class="bs-line" style="margin-top:10px">{DONOR_NOTES[key]}</div>',
+                        unsafe_allow_html=True)
     st.download_button("Summary for my doctor", _doctor_summary(user, report), type="primary",
                        file_name=f"bloodsight-summary-{report['date']}.txt", mime="text/plain",
                        key=f"dl_{report['id']}_{key}")
@@ -346,26 +384,21 @@ def _results(user: dict) -> None:
         picked = labels[st.selectbox("Report", list(labels), index=0)]
     out = [v for v in picked["values"] if v["flag"] != "In range"]
     ok = [v for v in picked["values"] if v["flag"] == "In range"]
-    st.markdown(f"#### Blood test of {_day(picked['date'])} · {picked['lab']} · {len(picked['values'])} values "
-                f"· {len(out)} out of range")
+    _h(f"Blood test of {_day(picked['date'])} · {picked['lab']} · {len(picked['values'])} values "
+       f"· {len(out)} out of range")
 
     # Every value of the report is on the page: out of range first, then all in-range values. Nothing is
     # folded away, so the count in the heading always matches what is visible.
-    if out:
-        st.markdown('<div style="padding:4px 4px 2px;font-weight:600">Outside the range the lab printed</div>',
-                    unsafe_allow_html=True)
-        _value_cards(out, picked, "out")
-    else:
-        st.markdown('<div class="bs-alert ok" style="padding:14px 20px">'
-                    '<h4>Every value is inside the range the lab printed</h4>'
-                    '<p>Nothing in this report is flagged.</p></div>', unsafe_allow_html=True)
+    _table_head()
+    for v in out:
+        _value_row(v, picked, "out")
     if ok:
-        st.markdown(f'<div style="padding:12px 4px 2px;font-weight:600">Inside the range the lab printed '
-                    f'({len(ok)} values)</div>', unsafe_allow_html=True)
-        _value_cards(ok, picked, "in")
-    st.markdown(f'<div class="bs-card" style="padding:14px 20px;margin-top:10px">'
-                f'<div class="units" style="margin:0">Blood type from this test: '
-                f'<b>{picked["blood_type"]}</b></div></div>', unsafe_allow_html=True)
+        if out:
+            st.markdown(f'<div class="bs-sep">In range ({len(ok)})</div>', unsafe_allow_html=True)
+        for v in ok:
+            _value_row(v, picked, "in")
+    st.markdown(f'<div class="bs-note" style="margin-top:10px">Blood type from this test: '
+                f'<b style="color:{INK}">{picked["blood_type"]}</b></div>', unsafe_allow_html=True)
 
     # Bridge to the donor side. Only for people who switched the donor part on, and only if something is open.
     needs = store.needs_for(user["username"]) if _donor_on(user) else []
@@ -378,11 +411,9 @@ def _results(user: dict) -> None:
             what = "plasma, which any blood type can give"
         one = len(needs) == 1
         st.markdown("")
-        st.markdown(f'<div class="bs-card" style="padding:16px 20px"><b>{len(needs)} '
+        st.markdown(f'<div class="bs-card" style="padding:16px 18px"><b>{len(needs)} '
                     f'{"place" if one else "places"} near you '
-                    f'{"needs" if one else "need"} {what}</b>'
-                    f'<div class="units">You switched this on. Giving blood is up to you, every time.'
-                    f'</div></div>', unsafe_allow_html=True)
+                    f'{"needs" if one else "need"} {what}</b></div>', unsafe_allow_html=True)
         if st.button("See what is needed", key="bridge_to_needs", type="primary"):
             _goto("Needs")
 
@@ -401,35 +432,41 @@ def _by_day(slots: list[str]) -> list[tuple[str, list[str]]]:
 def _day_row(user: dict, n: dict, day: str, times: list[str]) -> None:
     """One day of a request: the day on the left, that day's times as buttons next to it."""
     for start in range(0, len(times), SLOTS_PER_ROW):
-        cols = st.columns([1.5] + [1] * SLOTS_PER_ROW)
-        cols[0].markdown(f'<div style="padding-top:7px;font-weight:600;color:{ui.INK}">'
+        cols = st.columns([1.6] + [0.8] * SLOTS_PER_ROW + [3], gap="small",
+                          vertical_alignment="center")
+        cols[0].markdown(f'<div style="font-size:13px;font-weight:600;color:{INK}">'
                          f'{_day(day) if start == 0 else "&nbsp;"}</div>', unsafe_allow_html=True)
         for col, time in zip(cols[1:], times[start:start + SLOTS_PER_ROW]):
-            if col.button(time, key=f"book_{n['id']}_{day}_{time}", type="primary",
-                          use_container_width=True):
+            if col.button(time, key=f"book_{n['id']}_{day}_{time}"):
                 store.book(user["username"], n["id"], f"{day} {time}")
                 st.rerun()
 
 
 def _need_card(user: dict, n: dict) -> None:
     dist = f"{_num(n['distance_km'])} km" if n["distance_km"] is not None else "nearby"
-    gave = '<span class="bs-chip" style="background:#eef4fc;color:#2a78d6">You gave here</span>' if n["gave_here"] else ""
+    gave = _tag("You gave here") if n["gave_here"] else ""
     # One bordered container per need, so the buttons visibly belong to the card they act on.
     with st.container(border=True):
-        st.markdown(f'<div class="bs-card" style="border:0;padding:0;background:transparent">'
-                    f'<div class="bt">{n["place_name"]}</div>'
-                    f'<div class="units">needs <b>{n["blood_type"]}</b> · {dist}</div>'
-                    f'{ui.chip(URGENCY_RISK.get(n["urgency"], "Low"), n["urgency"])} {gave}'
-                    f'<div class="sub">Why you: {", ".join(n["reasons"])}.</div></div>', unsafe_allow_html=True)
+        left, right = st.columns([3.2, 1], vertical_alignment="top")
+        left.markdown(f'<div style="font-size:15px;font-weight:600;color:{INK}">{n["place_name"]}</div>'
+                      f'<div style="font-size:13px;color:#4b5563;margin-top:2px">needs '
+                      f'<b style="color:{INK}">{n["blood_type"]}</b> · {dist}</div>'
+                      f'<div class="bs-note" style="margin-top:4px">{n["message"]} '
+                      f'Why you: {", ".join(n["reasons"])}.</div>', unsafe_allow_html=True)
+        right.markdown(f'<div style="display:flex;justify-content:flex-end;align-items:center;gap:10px;'
+                       f'flex-wrap:wrap">'
+                       f'{ui.chip(URGENCY_RISK.get(n["urgency"], "Low"), n["urgency"])}{gave}</div>',
+                       unsafe_allow_html=True)
 
         booking = n["my_booking"]
         if booking:
-            st.success(f"Booked: {_slot(booking['slot'])} at {n['place_name']}")
-            if st.button("Cancel booking", key=f"cancel_{booking['id']}"):
+            st.markdown(f'<div style="font-size:13px;color:{INK};margin:10px 0 2px">'
+                        f'{_tag("Booked", OK_GREEN)} &nbsp;{_slot(booking["slot"])}</div>',
+                        unsafe_allow_html=True)
+            if st.button("Cancel booking", key=f"quiet_cancel_{booking['id']}"):
                 store.cancel_booking(user["username"], booking["id"])
                 st.rerun()
         else:
-            st.caption("Pick a time")
             days = _by_day(n["slots"])
             for day, times in days[:DAYS_SHOWN]:
                 _day_row(user, n, day, times)
@@ -437,15 +474,12 @@ def _need_card(user: dict, n: dict) -> None:
                 with st.expander("More days"):
                     for day, times in days[DAYS_SHOWN:]:
                         _day_row(user, n, day, times)
-            cols = st.columns([1.5] + [1] * SLOTS_PER_ROW)
-            if cols[1].button("Not this time", key=f"decline_{n['id']}", use_container_width=True):
+            cols = st.columns([1.6, 3], gap="small")
+            if cols[0].button("Not this time", key=f"decline_{n['id']}"):
                 store.decline(user["username"], n["id"])
                 st.rerun()
-            st.caption("'Not this time' costs nothing and is never shown to the place.")
-        with st.expander("What happens at the visit"):
-            st.markdown(n["message"])
-            st.markdown(VISIT_TEXT)
-            st.caption("The app never promises that you can give: the centre decides at the visit.")
+        st.markdown(f'<div class="bs-note" style="margin-top:6px">{VISIT_TEXT} '
+                    f'The centre decides at the visit.</div>', unsafe_allow_html=True)
     st.markdown("")
 
 
@@ -477,7 +511,7 @@ def _needs(user: dict) -> None:
         st.caption(f"{len(hidden)} request hidden: you said not this time.")
 
     st.divider()
-    st.caption("You get at most two request notifications a month. Open needs near you stay listed here.")
+    st.caption("At most two request notifications a month.")
     paused = st.toggle("Pause all requests", value=bool(user.get("paused")), key="pause_needs")
     if paused != bool(user.get("paused")):
         store.update_user(user["username"], paused=paused)
@@ -489,39 +523,38 @@ def _needs(user: dict) -> None:
 def _donations(user: dict) -> None:
     d = store.donations(user["username"])
     bookings = store.my_bookings(user["username"])
-    st.markdown(f"#### {d['total']} donation{'s' if d['total'] != 1 else ''} · {d['places']} places")
+    _h(f"{d['total']} donation{'s' if d['total'] != 1 else ''} · {d['places']} places")
 
-    st.markdown("##### Booked")
+    _h("Booked")
     if bookings:
         # Read straight from store.my_bookings on every run, which returns only slots that still
         # stand: nothing here is cached, so a slot the store cancelled is gone from this list.
         for b in bookings:
             with st.container(border=True):
-                st.markdown(f'<div class="bs-card" style="border:0;padding:0;background:transparent">'
-                            f'<b>{_slot(b["slot"])}</b>'
-                            f'<div class="units">{b["place_name"]}</div>'
-                            f'<div class="sub">{VISIT_TEXT}</div></div>', unsafe_allow_html=True)
-                cols = st.columns([1, 2])
-                if cols[0].button("Cancel booking", key=f"dcancel_{b['id']}", use_container_width=True):
+                st.markdown(f'<div style="font-size:14px;font-weight:600;color:{INK}">{_slot(b["slot"])}</div>'
+                            f'<div style="font-size:13px;color:#4b5563;margin-top:2px">{b["place_name"]}</div>'
+                            f'<div class="bs-note" style="margin-top:4px">{VISIT_TEXT}</div>',
+                            unsafe_allow_html=True)
+                if st.button("Cancel booking", key=f"quiet_dcancel_{b['id']}"):
                     store.cancel_booking(user["username"], b["id"])
                     st.rerun()
     else:
         st.caption("No slot booked.")
     st.caption("Next possible date: set by the donor centre.")
 
-    st.markdown("##### Where it went")
+    _h("Where it went")
     if d["history"]:
         for h in d["history"]:
-            st.markdown(f'<div class="bs-card" style="margin-bottom:8px;padding:16px 20px">'
-                        f'<b>{_day(h["date"])} · {h["kind"]}</b>'
-                        f'<div class="units">{h["place_name"]}</div>'
-                        f'<div class="sub">{h["used"]}</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="padding:8px 0;border-bottom:1px solid {BORDER}">'
+                        f'<div style="font-size:13px;font-weight:600;color:{INK}">{_day(h["date"])} · '
+                        f'{h["kind"]} · {h["place_name"]}</div>'
+                        f'<div class="bs-note">{h["used"]}</div></div>', unsafe_allow_html=True)
     else:
         st.caption("No donations on record yet.")
 
     places = {h["place"]: h["place_name"] for h in d["history"]}
     if places:
-        st.markdown("##### Places you gave to")
+        _h("Places you gave to")
         for key, name in places.items():
             on = user.get("places", {}).get(key, True)
             new = st.toggle(f"{name}: may ask me", value=bool(on), key=f"place_{key}")
@@ -619,20 +652,20 @@ def _answer(user: dict, question: str) -> str:
 
 
 def _ask(user: dict) -> None:
-    st.caption("Knows: your own lab results · your donations · open needs near you")
+    st.caption("Answers from your own lab results · your donations · open needs near you")
     log = st.session_state.setdefault("ask_log", [])
     for role, text in log:
         with st.chat_message(role):
             st.markdown(text)
 
-    st.caption("Try one of these")
+    _h("Questions")
     asked = None
-    for col, s in zip(st.columns(len(SUGGESTIONS)), SUGGESTIONS):
-        if col.button(s, key=f"sug_{s}", use_container_width=True):
-            asked = s
-    typed = st.chat_input("Ask about your own results, donations or needs")
+    for start in range(0, len(SUGGESTIONS), 3):
+        row = SUGGESTIONS[start:start + 3]
+        for col, s in zip(st.columns(3, gap="small"), row):
+            if col.button(s, key=f"sug_{start}_{s}"):
+                asked = s
     st.caption("The assistant gives no diagnosis, no cause and no promise that you can give blood.")
-    asked = typed or asked
     if asked:
         log.append(("user", asked))
         log.append(("assistant", _answer(user, asked)))
@@ -643,7 +676,7 @@ def _ask(user: dict) -> None:
 
 def _me(user: dict) -> None:
     sw = user.get("switches", {})
-    st.markdown("##### What may the app do?")
+    _h("What may the app do?")
     fields = [("results", "Show me my lab results"),
               ("nearby", "Tell me when a place nearby needs my blood type"),
               ("gave_before", "Tell places I gave to before when I am allowed to give again")]
@@ -652,8 +685,6 @@ def _me(user: dict) -> None:
         if new != bool(sw.get(key)):
             store.update_user(user["username"], switches={key: new})
             st.rerun()
-    st.caption("Each switch can be turned off. Results only is a valid way to use the app: with both donor "
-               "switches off, Needs stays empty and says so.")
 
     st.divider()
     paused = st.toggle("Pause all requests", value=bool(user.get("paused")), key="pause_me")
@@ -663,7 +694,7 @@ def _me(user: dict) -> None:
     st.caption("You are asked at most twice a month, pause or no pause.")
 
     st.divider()
-    st.markdown("##### Your details")
+    _h("Your details")
     with st.form("me_details"):
         c1, c2 = st.columns(2)
         postcode = c1.text_input("Postcode", value=user.get("postcode", ""))
@@ -683,9 +714,8 @@ def _me(user: dict) -> None:
     if not user.get("lab_code"):
         _link_lab_code(user, "me")
     else:
-        st.markdown(f'<div class="bs-card" style="padding:16px 20px">'
-                    f'<div class="units">Lab code <b>{user["lab_code"]}</b><br>'
-                    f'Donor registered with {store.LAB_NAME}</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="bs-note">Lab code <b style="color:{INK}">{user["lab_code"]}</b> · '
+                    f'{store.LAB_NAME}</div>', unsafe_allow_html=True)
 
 
 # -------------------------------------------------------------------------------- router
@@ -695,6 +725,7 @@ def render(user: dict) -> None:
     if goto in PAGES:
         st.session_state["nav"] = goto  # staged before the nav radio is built, so Streamlit allows the write
     page = ui.sidebar(user, PAGES)
+    st.markdown(CSS, unsafe_allow_html=True)
     if st.session_state.get("_last_page") != page:
         st.session_state["_last_page"] = page
         _close_value()

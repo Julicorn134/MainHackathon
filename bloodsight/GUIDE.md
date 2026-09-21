@@ -178,9 +178,14 @@ These are enforced in `store.py`, not only written on a screen.
   learns their name and the slot they chose.
 - **"Not this time" is only a count.** A decline is stored as an input to a count. No screen of the
   place shows who declined.
-- **At most two asks a month.** A person is asked at most twice per month, pause or no pause. The
-  counter is checked before a request notification is sent, and people already at the limit are
-  excluded from the match count as well.
+- **At most two request notifications a month.** The counter is checked before a request
+  notification is sent, and people already at the limit are excluded from the match count. Open
+  needs stay listed on the Needs page. The counter is not reset by the prototype.
+- **One open request per place and blood type.** A second send for the same type is refused until
+  the first is closed, so the same people are not asked twice and bookings are not counted twice.
+  A request closes itself when bookings reach its target.
+- **Closing a campaign keeps booked appointments.** The people who booked are told their slot
+  stands. A cancellation tells both the person and the place.
 - **Urgent values wait for the doctor's phone call.** An urgent lab value is held back from the
   batch. The Release button is disabled until the phone call is recorded, and the store raises an
   error if a release is attempted anyway. An app never delivers an urgent value first.

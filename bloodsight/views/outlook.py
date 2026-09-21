@@ -88,7 +88,7 @@ def render(user: dict) -> None:
     base = fx.forecast_type(df, bt)
     rec = fx.recommend(df, bt, base, safety, warning)
     current = int(df[df.blood_type == bt].inventory.iloc[-1])
-    # Screen 2 feeds back into screen 1: donations already booked through the open request of this centre.
+    # Screen 2 feeds back into screen 1: donations already booked through the requests of this centre.
     open_req = store.open_request(CENTRE, bt)
     booked = store.expected_donations(CENTRE, bt)
     booked_fc = fx.apply_campaign(base, booked, fx.CAMPAIGN_LEAD_DAYS + 1, 5) if booked else None
@@ -218,9 +218,9 @@ def render(user: dict) -> None:
                 unsafe_allow_html=True)
         if booked:
             after_booked = fx.assess(booked_fc, safety, warning)
-            # One request per blood type can be open, so name it: the count comes from that one request.
-            one = f"{open_req['id']}, the open {bt} request of this centre" if open_req \
-                else f"the open {bt} requests of this centre"
+            # One request per blood type can be open. A closed one keeps its appointments, so it still counts.
+            one = (f"{open_req['id']}, the open {bt} request of this centre" if open_req
+                   else f"closed {bt} requests of this centre, whose appointments stand")
             st.markdown(f"**{booked:,} donation{'s' if booked != 1 else ''} "
                         f"{'are' if booked != 1 else 'is'} already booked** through {one}. "
                         f"{'They are' if booked != 1 else 'It is'} in the chart as a dotted line. "
@@ -230,7 +230,7 @@ def render(user: dict) -> None:
             st.markdown(f"**{open_req['id']} for {bt} is open** and nobody has booked a slot yet, so the projection "
                         "above is the one without donations. Bookings appear here as they come in.")
         else:
-            st.caption(f"No {bt} request of this centre is open, so no booked donations are in the projection.")
+            st.caption(f"No {bt} request of this centre has bookings, so no booked donations are in the projection.")
         ui_request_button(bt, rec, open_req)
     with why_col:
         st.markdown("**Why the model sees this**")

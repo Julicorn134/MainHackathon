@@ -121,9 +121,8 @@ def _flag_chip(flag: str) -> str:
 
 
 def _close_value() -> None:
-    """Leave the opened value and go back to the list of results."""
+    """Leave the opened value: the list of results is underneath it."""
     st.session_state.pop("open_value", None)
-    st.session_state.pop("_value_open", None)
 
 
 def _goto(page: str) -> None:
@@ -268,8 +267,7 @@ def _value_page(user: dict, report: dict, key: str) -> None:
         _close_value()
         st.rerun()
     back, _ = st.columns([1, 4])
-    fired = back.button("Back to results", key="back_to_results", type="primary", use_container_width=True)
-    if fired:
+    if back.button("Back to results", key="back_to_results", type="primary", use_container_width=True):
         _close_value()
         st.rerun()
 
@@ -293,15 +291,9 @@ def _value_page(user: dict, report: dict, key: str) -> None:
             st.markdown(f'<div class="bs-card" style="margin-top:8px"><b>For donors</b>'
                         f'<div class="units">{DONOR_NOTES[key]}</div></div>', unsafe_allow_html=True)
     st.caption(f"source: report of {_short(report['date'])}, line {v['line']}")
-    fired = st.download_button("Summary for my doctor", _doctor_summary(user, report), type="primary",
-                               file_name=f"bloodsight-summary-{report['date']}.txt", mime="text/plain",
-                               key=f"dl_{report['id']}_{key}") or fired
-    # A rerun that none of this value's own controls caused came from somewhere else on the screen
-    # (the report picker, the sidebar): close the value rather than leave it standing over the list.
-    if st.session_state.get("_value_open") == (report["id"], key) and not fired:
-        _close_value()
-        st.rerun()
-    st.session_state["_value_open"] = (report["id"], key)
+    st.download_button("Summary for my doctor", _doctor_summary(user, report), type="primary",
+                       file_name=f"bloodsight-summary-{report['date']}.txt", mime="text/plain",
+                       key=f"dl_{report['id']}_{key}")
 
 
 def _results(user: dict) -> None:
@@ -466,8 +458,8 @@ def _donations(user: dict) -> None:
 
     st.markdown("##### Booked")
     if bookings:
-        # store.my_bookings returns only slots that are still booked, so a slot the centre cancelled
-        # is gone from this list on the next run. Nothing here is kept in session state.
+        # Read straight from store.my_bookings on every run, which returns only slots that still
+        # stand: nothing here is cached, so a slot the store cancelled is gone from this list.
         for b in bookings:
             with st.container(border=True):
                 st.markdown(f'<div class="bs-card" style="border:0;padding:0;background:transparent">'

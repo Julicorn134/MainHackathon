@@ -151,15 +151,17 @@ def _publish(user: dict, b: dict, people: list[dict], codes: set[str]) -> None:
     st.caption("A report is held back when it is not safe to deliver it through the app: either the lab code "
                "does not match the record, or a value is urgent. Held reports stay out of the batch until "
                "someone at the lab clears them.")
+    st.caption("Doctor has phoned: records that the patient was told by telephone. Release: adds the report to "
+               "the batch, and for an urgent value it opens only after that call is recorded. Checked by hand, "
+               "release: for a code that does not match, after a person compared sample and record.")
     for h in b["held"]:
-        left, right = st.columns([3, 1.5], vertical_alignment="center")
+        left, right = st.columns([2.6, 2], vertical_alignment="center")
         state = "Released" if h["released"] else "Doctor has phoned" if h["phoned"] else h["note"]
         left.markdown(f'<div class="bs-card" style="margin-bottom:8px"><b>{escape(h["code"])}</b>'
                       f'<div class="units">{escape(h["detail"])}</div>'
                       f'<div class="sub">{escape(state)}</div></div>', unsafe_allow_html=True)
         if h["released"]:
-            right.success("Released to the patient")
-            right.caption("The report is now part of the batch and goes out with it.")
+            right.success("Released to the patient: it goes out with the batch.")
             continue
         if h["reason"] == "urgent":
             c1, c2 = right.columns(2)
@@ -176,8 +178,6 @@ def _publish(user: dict, b: dict, people: list[dict], codes: set[str]) -> None:
                     st.error(str(e))
                 else:
                     st.rerun()
-            right.caption("Doctor has phoned: records that the patient was told by telephone. Release: adds the "
-                          "report to the batch, and opens only after that call is recorded.")
         else:
             if right.button("Checked by hand, release", key=f"rel_{h['code']}", use_container_width=True):
                 try:
@@ -186,7 +186,6 @@ def _publish(user: dict, b: dict, people: list[dict], codes: set[str]) -> None:
                     st.error(str(e))
                 else:
                     st.rerun()
-            right.caption("Release after a person compared the sample with the record.")
 
     # -------------------------------------------------------------------------------- publish
     st.markdown("#### Publish")

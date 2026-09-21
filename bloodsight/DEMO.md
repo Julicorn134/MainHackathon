@@ -8,7 +8,7 @@ stay logged in at the same time.
 1. Delete `state.json` so the demo starts clean.
 2. `.venv\Scripts\streamlit run app.py` (Windows) or `.venv/bin/streamlit run app.py`.
 3. Open http://localhost:8501 in three tabs. On the login page each tab has a demo button under
-   "Demo accounts": press **Blood centre** in tab 1, **Lab / doctor** in tab 2, **Patient** in tab 3.
+   "Demo accounts": press **Blood centre** in tab 1, **Lab** in tab 2, **Patient** in tab 3.
 4. Leave tab 1 on **Outlook**, tab 2 on **Publish results**, tab 3 on **Results**.
 5. Check that `data.csv` ends on 2026-09-21. If not, run `python forecast.py 2026-09-21` before the
    pitch, or the numbers below will not match. The app's "today" is the last date in that file.

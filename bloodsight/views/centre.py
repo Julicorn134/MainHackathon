@@ -568,7 +568,7 @@ def render(user: dict) -> None:
     flash = st.session_state.pop("req_flash", None)
     if page == "Outlook":
         from views import outlook
-        ui.header("BloodSight AI", "Blood supply intelligence: see the shortage before it happens.")
+        ui.header("BloodSight AI")
         outlook.render(user)
     elif page == "Requests":
         _requests_page(user, flash)

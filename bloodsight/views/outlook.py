@@ -10,18 +10,41 @@ import forecast_data
 import store
 import ui
 
-# A calm clinical panel. No alarm colours: the assessment is read by staff, not shouted at them.
-_PANEL = ('border:1px solid #e1e0d9;border-left:4px solid {rule};border-radius:10px;background:#fff;'
-          'padding:16px 20px;margin:2px 0 14px;')
-_LABEL = ('display:block;font-size:.72rem;letter-spacing:.09em;text-transform:uppercase;'
-          'color:#898781;font-weight:700;margin-bottom:6px;')
+CENTRE = "rbc"          # fallback only: the signed-in account's own centre is used when it has one
+
+# A quiet status block. One uniform border, no accent rule and no label: staff read it, it does not announce itself.
+_PANEL = ('border:1px solid #e5e4df;border-radius:10px;background:#fff;'
+          'padding:16px 18px;margin:2px 0 16px;')
+_META = 'display:block;font-size:12px;color:#6b7280;margin-bottom:4px;'
+
+_CSS = """<style>
+.bsx-h {font-size:15px;font-weight:600;color:#111827;margin:24px 0 8px;}
+.bsx-strip {display:grid;grid-template-columns:repeat(4,1fr);border:1px solid #e5e4df;border-radius:10px;background:#fff;margin:0 0 8px;}
+.bsx-strip > div {padding:12px 16px;border-left:1px solid #e5e4df;}
+.bsx-strip > div:first-child {border-left:none;}
+.bsx-strip .l {font-size:12px;color:#6b7280;}
+.bsx-strip .v {font-size:24px;font-weight:600;color:#111827;line-height:1.3;margin-top:2px;}
+.bsx-grid {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;}
+.bsx-card {border:1px solid #e5e4df;border-radius:10px;background:#fff;padding:12px 14px;}
+.bsx-card .t {font-size:15px;font-weight:600;color:#111827;}
+.bsx-card .u {font-size:13px;color:#4b5563;margin-top:3px;line-height:1.45;}
+.bsx-card .u b {color:#111827;font-weight:600;}
+.bsx-card .m {margin-top:7px;}
+.bsx-card .s {font-size:12px;color:#6b7280;margin-top:4px;}
+.bsx-note {font-size:12.5px;color:#4b5563;margin:2px 0 0;}
+.bsx-foot {font-size:11.5px;color:#9ca3af;margin-top:28px;}
+</style>"""
 
 
-def _assessment(rule: str, title: str, body: str) -> str:
-    return (f'<div style="{_PANEL.format(rule=rule)}">'
-            f'<span style="{_LABEL}">BloodSight AI assessment</span>'
-            f'<div style="font-size:1.12rem;font-weight:700;color:#0b0b0b;margin-bottom:4px">{title}</div>'
-            f'<p style="margin:0;color:#52514e">{body}</p></div>')
+def _h(text: str) -> None:
+    st.markdown(f'<div class="bsx-h">{text}</div>', unsafe_allow_html=True)
+
+
+def _assessment(blood_type: str, title: str, body: str) -> str:
+    return (f'<div style="{_PANEL}">'
+            f'<span style="{_META}">Supply status · {blood_type}</span>'
+            f'<div style="font-size:16px;font-weight:600;color:#111827;margin-bottom:4px">{title}</div>'
+            f'<p style="margin:0;color:#4b5563;font-size:14px">{body}</p></div>')
 
 
 @st.cache_data
@@ -38,7 +61,7 @@ def ui_request_button(bt: str, rec: dict, open_req: dict | None = None) -> None:
     """The bridge to screen 2: a recommendation nobody can act on is only a report."""
     if rec["risk"] == "Low":
         return
-    label = f"Go to the open {bt} request" if open_req else f"Turn into a donor request for {bt}"
+    label = f"Open {open_req['id']}" if open_req else "Create request from forecast"
     if st.button(label, type="primary", key=f"to_request_{bt}"):
         if not open_req:
             st.session_state["request_prefill"] = {"blood_type": bt, "target": rec["target_units"],
@@ -46,11 +69,13 @@ def ui_request_button(bt: str, rec: dict, open_req: dict | None = None) -> None:
         st.session_state["_goto"] = "Requests"
         st.rerun()
     if open_req:
-        st.caption(f"{open_req['id']} for {bt} is already open. Close it on the Requests page before sending "
-                   "another one for this blood type.")
+        st.caption(f"{open_req['id']} for {bt} is open. Close it before sending another for this blood type.")
 
 
 def render(user: dict) -> None:
+    st.markdown(_CSS, unsafe_allow_html=True)
+    centre = user.get("org") or CENTRE
+    # The assessment sits directly under the page header. It is filled in once the blood type below is known.
     assessment_slot = st.container()
     source = st.radio("Forecast data", ["uploaded", "demo"],
                       format_func=lambda s: "Uploaded data" if s == "uploaded" else "Synthetic demonstration",
@@ -77,35 +102,36 @@ def render(user: dict) -> None:
 
     at_risk = summary[summary.risk != "Low"]
     critical = summary[summary.risk == "Critical"].sort_values("days_to_safety")
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Units in stock", f"{summary.inventory.sum():,}")
-    k2.metric("Blood types at risk (14 days)", f"{len(at_risk)} of {len(summary)}")
-    k3.metric("Earliest projected shortage",
-              f"{critical.iloc[0].blood_type} in {int(critical.iloc[0].days_to_safety)} days" if len(critical) else "None")
     errors = [v for v in get_backtest(df).values() if v is not None]
-    k4.metric("Forecast error (14-day backtest)", f"{np.mean(errors):.1%}" if errors else "Not defined",
-              help="Model trained without the last 14 days, then scored on total demand for those days. "
-                   "Average across the available types with nonzero held-out demand; not real-world validation.")
+    shortage = (f"{critical.iloc[0].blood_type} in {int(critical.iloc[0].days_to_safety)} days"
+                if len(critical) else "None")
+    metrics = (("Units in stock", f"{summary.inventory.sum():,}"),
+               ("Types at risk, 14 days", f"{len(at_risk)} of {len(summary)}"),
+               ("Earliest projected shortage", shortage),
+               ("Forecast error, 14-day backtest", f"{np.mean(errors):.1%}" if errors else "Not defined"))
+    st.markdown('<div class="bsx-strip">'
+                + "".join(f'<div><div class="l">{l}</div><div class="v">{v}</div></div>' for l, v in metrics)
+                + "</div>", unsafe_allow_html=True)
 
     # ------------------------------------------------------------------ status cards
-    st.markdown("#### Current stock and 14-day outlook")
+    _h("Current stock and 14-day outlook")
     cards = []
     for r in summary.itertuples():
-        note = (f"below safety in {int(r.days_to_safety)} days" if r.risk == "Critical"
-                else f"projected low: {r.projected_min:,}")
-        cards.append(f'<div class="bs-card"><div class="bt">{r.blood_type}</div>'
-                     f'<div class="units"><b>{r.inventory:,}</b> units<br>{r.days_of_supply:.1f} days of supply</div>'
-                     f'{ui.chip(r.risk)}<div class="sub">{note}</div></div>')
-    st.markdown(f'<div class="bs-grid">{"".join(cards)}</div>', unsafe_allow_html=True)
+        note = (f"Below safety in {int(r.days_to_safety)} days" if r.risk == "Critical"
+                else f"Projected low {r.projected_min:,}")
+        cards.append(f'<div class="bsx-card"><div class="t">{r.blood_type}</div>'
+                     f'<div class="u"><b>{r.inventory:,}</b> units<br>{r.days_of_supply:.1f} days of supply</div>'
+                     f'<div class="m">{ui.chip(r.risk)}</div><div class="s">{note}</div></div>')
+    st.markdown(f'<div class="bsx-grid">{"".join(cards)}</div>', unsafe_allow_html=True)
 
-    with st.expander("Table view", expanded=True):
-        st.dataframe(
-            summary.assign(risk=summary.risk.map(lambda r: f"{ui.STATUS[r]['icon']} {r}")).rename(columns={
-                "blood_type": "Blood type", "inventory": "Inventory", "days_of_supply": "Days of supply",
-                "projected_min": "Projected 14-day low", "safety": "Safety threshold",
-                "warning": "Warning threshold", "risk": "14-day risk", "days_to_safety": "Days to shortage"}),
-            hide_index=True, use_container_width=True,
-            column_config={"Days of supply": st.column_config.NumberColumn(format="%.1f")})
+    _h("All blood types")
+    st.dataframe(
+        summary.assign(risk=summary.risk.map(lambda r: f"{ui.STATUS[r]['icon']} {r}")).rename(columns={
+            "blood_type": "Blood type", "inventory": "Inventory", "days_of_supply": "Days of supply",
+            "projected_min": "Projected 14-day low", "safety": "Safety threshold",
+            "warning": "Warning threshold", "risk": "14-day risk", "days_to_safety": "Days to shortage"}),
+        hide_index=True, use_container_width=True,
+        column_config={"Days of supply": st.column_config.NumberColumn(format="%.1f")})
 
     # ------------------------------------------------------------- blood type detail
     st.markdown("")
@@ -126,19 +152,19 @@ def render(user: dict) -> None:
 
     if rec["risk"] == "Critical":
         panel = _assessment(
-            "#1e4f8f", f"Potential {bt} shortage detected",
+            bt, f"Potential {bt} shortage detected",
             f"Last recorded stock: <b>{current:,} units</b> in stock. Projected to be under the safety threshold "
             f"of <b>{safety:,} units</b> in <b>{rec['days_to_safety']} days</b>, reaching "
             f"<b>{rec['day7_inventory']:,.0f} units</b> a week from now.")
     elif rec["risk"] == "Medium":
         panel = _assessment(
-            "#5b7fa6", f"{bt} supply tightening",
+            bt, f"{bt} supply tightening",
             f"<b>{current:,} units</b> in stock. Projected to dip under the warning level of "
             f"<b>{warning:,} units</b> in <b>{rec['days_to_warning']} days</b>, while staying above the safety "
             f"threshold of <b>{safety:,} units</b>.")
     else:
         panel = _assessment(
-            "#9aa5ae", f"{bt} supply stable",
+            bt, f"{bt} supply stable",
             f"<b>{current:,} units</b> in stock. Projected to stay above the warning level of "
             f"<b>{warning:,} units</b> for the next 14 days, with the safety threshold at "
             f"<b>{safety:,} units</b>.")
@@ -148,14 +174,13 @@ def render(user: dict) -> None:
     chart_col, side_col = st.columns([2.1, 1], gap="large")
 
     with side_col:
-        st.markdown("##### DONOR CAMPAIGN")
+        _h("DONOR CAMPAIGN")
         default_units = min(rec["target_units"], 300)
         extra = st.slider("Additional donations", 0, 300, 0, 10, key=f"extra_{bt}",
-                          help=f"Model suggestion for {bt}: {default_units}")
-        delay = st.slider("Launch campaign in (days)", 0, 7, 0, key=f"delay_{bt}")
+                          help=f"Suggested for {bt}: {default_units}")
+        delay = st.slider("Launch in (days)", 0, 7, 0, key=f"delay_{bt}")
         window = st.slider("Campaign length (days)", 3, 10, 5, key=f"window_{bt}")
-        st.caption(f"Units become usable {fx.CAMPAIGN_LEAD_DAYS} days after launch "
-                   "(outreach ramp-up, then testing and processing).")
+        st.caption(f"Units usable {fx.CAMPAIGN_LEAD_DAYS} days after launch.")
 
     scenario = fx.apply_campaign(base, extra, delay + fx.CAMPAIGN_LEAD_DAYS + 1, window)
     after = fx.assess(scenario, safety, warning)
@@ -204,7 +229,7 @@ def render(user: dict) -> None:
                    booked_fc.inventory.max() if booked_fc is not None else 0) * 1.12
         # The title lives in the page, not in the figure: with four traces the legend wraps to two rows
         # and a Plotly title in the same top margin collides with it.
-        st.markdown(f"##### {bt} inventory: last 30 days and 14-day projection")
+        _h(f"{bt} inventory: last 30 days and 14-day projection")
         fig.update_layout(
             height=430, margin=dict(l=10, r=10, t=76, b=10), hovermode="x unified",
             plot_bgcolor="#fcfcfb", paper_bgcolor="#fcfcfb", font=dict(color=ui.INK_2),
@@ -216,35 +241,35 @@ def render(user: dict) -> None:
     with side_col:
         before_txt = (f"shortage in {rec['days_to_safety']} days" if rec["risk"] == "Critical"
                       else "under warning level" if rec["risk"] == "Medium" else "stable")
-        st.markdown(f"**Without campaign:** {ui.chip(rec['risk'])} {before_txt}", unsafe_allow_html=True)
+        st.markdown(f'<div class="bsx-note">No campaign: {ui.chip(rec["risk"])} {before_txt}</div>',
+                    unsafe_allow_html=True)
         if extra > 0:
             after_txt = {
-                "Critical": f"still short in {after['days_to_safety']} days: too little or too late",
-                "Medium": "shortage avoided, buffer still thin on day 14",
-                "Low": "shortage avoided, stock back above the warning level",
+                "Critical": f"still short in {after['days_to_safety']} days",
+                "Medium": "shortage avoided, buffer thin on day 14",
+                "Low": "shortage avoided, stock above the warning level",
             }[after["outcome"]]
-            st.markdown(f"**With +{extra} donations:** {ui.chip(after['outcome'])} {after_txt}", unsafe_allow_html=True)
-            st.caption(f"Projected 14-day low: {rec['min_inventory']:,.0f} → {after['min_inventory']:,.0f} units")
-        else:
-            st.caption("Move the slider to test an intervention.")
+            st.markdown(f'<div class="bsx-note">With +{extra} donations: {ui.chip(after["outcome"])} '
+                        f'{after_txt}</div>', unsafe_allow_html=True)
+            st.caption(f"Projected 14-day low {rec['min_inventory']:,.0f} to {after['min_inventory']:,.0f} units")
 
     # The forecast detail is drawn into this slot further down, so the recommendation stays the last block.
     forecast_slot = st.container()
 
     # ---------------------------------------------------------------- recommendation
-    st.markdown("#### BloodSight AI recommendation")
+    _h("Recommendation")
     rec_col, why_col = st.columns([1.2, 1], gap="large")
     with rec_col:
         if rec["risk"] == "Low":
             st.markdown(f'<div class="bs-rec"><b>No intervention needed for {bt}.</b><br>'
-                        'Keep routine collection schedules. BloodSight AI re-evaluates the outlook daily.</div>',
+                        'Keep routine collection schedules.</div>',
                         unsafe_allow_html=True)
         else:
             lw = rec["launch_within_days"]
             launch = "today" if lw == 0 else f"within {lw * 24} hours" if lw <= 3 else f"within {lw} days"
-            headline = (f"Launch a targeted {bt} donor campaign {launch}, before stock reaches critical levels."
+            headline = (f"Launch a targeted {bt} donor campaign {launch}."
                         if rec["risk"] == "Critical"
-                        else f"Schedule a modest {bt} donor drive {launch} to rebuild the buffer.")
+                        else f"Schedule a {bt} donor drive {launch} to rebuild the buffer.")
             st.markdown(
                 f'<div class="bs-rec"><b>{headline}</b><table>'
                 f'<tr><td>Target</td><td>{rec["target_units"]} additional donations</td></tr>'
@@ -256,25 +281,25 @@ def render(user: dict) -> None:
         if booked:
             after_booked = fx.assess(booked_fc, safety, warning)
             # One request per blood type can be open. A closed one keeps its appointments, so it still counts.
-            one = (f"{open_req['id']}, the open {bt} request of this centre" if open_req
-                   else f"closed {bt} requests of this centre, whose appointments stand")
-            st.markdown(f"**{booked:,} donation{'s' if booked != 1 else ''} "
-                        f"{'are' if booked != 1 else 'is'} already booked** through {one}. "
-                        f"{'They are' if booked != 1 else 'It is'} in the chart as a dotted line. "
-                        f"Projected 14-day low with {'them' if booked != 1 else 'it'}: "
-                        f"{after_booked['min_inventory']:,.0f} units.")
+            one = (f"{open_req['id']}" if open_req else f"closed {bt} requests, whose appointments stand")
+            st.markdown(f'<div class="bsx-note">{booked:,} donation{"s" if booked != 1 else ""} already booked '
+                        f'through {one}, shown as the dotted line. Projected 14-day low with '
+                        f'{"them" if booked != 1 else "it"}: {after_booked["min_inventory"]:,.0f} units.</div>',
+                        unsafe_allow_html=True)
         elif open_req:
-            st.markdown(f"**{open_req['id']} for {bt} is open** and nobody has booked a slot yet, so the projection "
-                        "above is the one without donations. Bookings appear here as they come in.")
+            st.markdown(f'<div class="bsx-note">{open_req["id"]} for {bt} is open with no bookings yet, so the '
+                        'projection above holds no donations.</div>', unsafe_allow_html=True)
         else:
-            st.caption(f"No {bt} request of this centre has bookings, so no booked donations are in the projection.")
+            st.caption(f"No {bt} request has bookings, so no booked donations are in the projection.")
         ui_request_button(bt, rec, open_req)
     with why_col:
-        st.markdown("**Why BloodSight AI sees this**")
+        _h("Drivers")
         for d in rec["drivers"]:
             st.markdown(f"- {d}")
 
-    with forecast_slot, st.expander("Behind the forecast: daily usage and donations", expanded=True):
+    with forecast_slot:
+        _h("Behind the forecast: daily usage and donations")
+    with forecast_slot:
         h = df[df.blood_type == bt].tail(30)
         flow = go.Figure()
         for col, name, color in (("demand", "Usage", "#eb6834"), ("donations", "Donations", ui.BLUE)):
@@ -291,11 +316,11 @@ def render(user: dict) -> None:
         error = get_backtest(df)[bt]
         error_label = f"{error:.1%}" if error is not None else "undefined (zero held-out demand)"
         st.markdown(
-            f"**Model.** One ridge regression per blood type and per flow (usage, donations), trained on the last "
-            f"{fx.TRAIN_DAYS} days with day-of-week, trend and public-holiday features. Projected inventory = current "
-            f"inventory + predicted donations − predicted usage. Risk: projected stock under {fx.SAFETY_DAYS} days of "
-            f"supply is critical, under {fx.WARNING_DAYS} days is medium. 14-day backtest error for {bt}: "
-            f"{error_label}. The backtest hides the most recent 14 days, so a type whose trend changed inside "
-            "that window scores worse than a stable one.")
+            f'<div class="bsx-note">Model: one ridge regression per blood type and per flow (usage, donations), '
+            f"trained on the last {fx.TRAIN_DAYS} days with day-of-week, trend and public-holiday features. "
+            f"Projected inventory = current inventory + predicted donations - predicted usage. Projected stock under "
+            f"{fx.SAFETY_DAYS} days of supply is critical, under {fx.WARNING_DAYS} days is medium. 14-day backtest "
+            f'error for {bt}: {error_label}.</div>', unsafe_allow_html=True)
 
-    st.caption("Prototype on synthetic data. Decision support for collection planning, not for clinical decisions.")
+    st.markdown('<div class="bsx-foot">Decision support for collection planning, not for clinical decisions. '
+                'Synthetic data.</div>', unsafe_allow_html=True)

@@ -34,26 +34,49 @@ TEMPLATES = [
 ]
 
 # Colour per order status. The word is always shown, so colour is never the only carrier.
-ORDER_STATUS_STYLE = {
-    "submitted": ("#52514e", "#f0efec"),
-    "confirmed": ("#0a7d0a", "#e6f4e6"),
-    "partly available": ("#b97d00", "#fdf3d9"),
-    "ready for pickup": ("#0a7d0a", "#e6f4e6"),
-    "delivered": ("#2a78d6", "#e8f1fc"),
-    "declined": ("#d03b3b", "#fbeaea"),
+ORDER_STATUS_COLOR = {
+    "submitted": "#4b5563",
+    "confirmed": "#15803d",
+    "partly available": "#b45309",
+    "ready for pickup": "#15803d",
+    "delivered": "#1d4ed8",
+    "declined": "#c8102e",
 }
 
-_TABLE_CSS = """
+_CSS = """
 <style>
-.bs-table {width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #e1e0d9;
-           border-radius: 10px; overflow: hidden; font-size: .93rem; margin: 4px 0 6px;}
-.bs-table th {padding: 10px 14px; text-align: left; background: #faf9f6; color: #0b0b0b;
-              font-weight: 600; white-space: nowrap;}
-.bs-table td {padding: 10px 14px; text-align: left; border-top: 1px solid #f0efec; color: #52514e;
+.bs-sec {font-size: 15px; font-weight: 600; color: #111827; margin: 22px 0 6px;}
+.bs-help {font-size: 12.5px; color: #5f5d58; margin: 0 0 8px;}
+.bs-strip {display: flex; border: 1px solid #e5e4df; border-radius: 10px; background: #fff; margin: 4px 0 4px;}
+.bs-strip .m {flex: 1; padding: 12px 16px; border-left: 1px solid #e5e4df;}
+.bs-strip .m:first-child {border-left: none;}
+.bs-strip .k {font-size: 12px; color: #6b7280;}
+.bs-strip .v {font-size: 24px; font-weight: 600; color: #111827; line-height: 1.3;}
+.bs-strip .n {font-size: 12.5px; color: #5f5d58;}
+.bs-mark {font-size: 12.5px; font-weight: 600;}
+.bs-mark i {display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px;
+             vertical-align: middle; font-style: normal;}
+.bs-table {width: 100%; border-collapse: collapse; background: #fff; font-size: 13px; margin: 2px 0 6px;}
+.bs-table th {padding: 8px 12px; text-align: left; font-size: 11.5px; font-weight: 600; color: #6b7280;
+              text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid #e5e4df;
+              white-space: nowrap;}
+.bs-table td {padding: 8px 12px; text-align: left; border-bottom: 1px solid #f0efec; color: #4b5563;
               vertical-align: top;}
-.bs-table td:first-child {color: #0b0b0b; font-weight: 600;}
-.bs-thread {border-left: 3px solid #e1e0d9; padding: 2px 0 2px 12px; margin: 6px 0;}
-.bs-thread .who {font-size: .8rem; color: #898781;}
+.bs-table td.n {text-align: right;}
+.bs-table th.n {text-align: right;}
+.bs-table td:first-child {color: #111827; font-weight: 600;}
+.bs-head {font-size: 11.5px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: .04em;
+          padding-bottom: 6px; border-bottom: 1px solid #e5e4df; margin-bottom: 2px;}
+.bs-cell {font-size: 13px; color: #4b5563; line-height: 1.5;}
+.bs-cell.k {color: #111827; font-weight: 600;}
+[class*="st-key-hbrow-"] {border-bottom: 1px solid #f0efec; padding: 4px 0;}
+.bs-panel {border: 1px solid #e5e4df; border-radius: 10px; background: #fff; padding: 14px 18px; margin: 2px 0 8px;}
+.bs-panel .t {font-size: 12px; color: #6b7280; margin: 10px 0 2px;}
+.bs-panel .t:first-child {margin-top: 0;}
+.bs-ev {padding: 6px 0; border-top: 1px solid #f0efec; font-size: 13px; color: #4b5563;}
+.bs-ev:first-of-type {border-top: none;}
+.bs-ev b {color: #111827;}
+.bs-ev .who {font-size: 12px; color: #8a8780;}
 </style>
 """
 
@@ -117,112 +140,137 @@ def _preview_value() -> dict:
     return {"name": "Ferritin (iron store)", "value": 18, "unit": "ng/mL", "low": 30, "high": 300, "flag": "Low"}
 
 
-def _table(headers: list[str], rows: list[list[str]]) -> None:
+def _css() -> None:
+    st.markdown(_CSS, unsafe_allow_html=True)
+
+
+def _section(title: str, help_text: str | None = None) -> None:
+    """Section heading at 15px/600, with one quiet helper line when it earns its place."""
+    block = f'<div class="bs-sec">{escape(title)}</div>'
+    if help_text:
+        block += f'<div class="bs-help">{escape(help_text)}</div>'
+    st.markdown(block, unsafe_allow_html=True)
+
+
+def _mark(color: str, label: str) -> str:
+    """A status mark: dot plus plain coloured text. Never a pill."""
+    return (f'<span class="bs-mark" style="color:{color}"><i style="background:{color}"></i>'
+            f'{escape(label)}</span>')
+
+
+def _table(headers: list[str], rows: list[list[str]], numeric: set[int] | None = None) -> None:
     """A plain HTML table. Replaces st.dataframe: same content, aligned columns, no heavy import."""
-    head = "".join(f"<th>{escape(str(h))}</th>" for h in headers)
-    body = "".join("<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>" for r in rows)
-    st.markdown(f"{_TABLE_CSS}<table class='bs-table'><thead><tr>{head}</tr></thead>"
+    numeric = numeric or set()
+    head = "".join(f'<th class="{"n" if i in numeric else ""}">{escape(str(h))}</th>'
+                   for i, h in enumerate(headers))
+    body = "".join("<tr>" + "".join(f'<td class="{"n" if i in numeric else ""}">{c}</td>'
+                                    for i, c in enumerate(r)) + "</tr>" for r in rows)
+    st.markdown(f"<table class='bs-table'><thead><tr>{head}</tr></thead>"
                 f"<tbody>{body}</tbody></table>", unsafe_allow_html=True)
 
 
-def _order_chip(status: str) -> str:
-    color, bg = ORDER_STATUS_STYLE.get(status, ("#52514e", "#f0efec"))
-    return (f'<span class="bs-chip" style="background:{bg};color:{color}">'
-            f'{escape(status.capitalize())}</span>')
+def _metric_strip(items: list[tuple[str, str, str]]) -> None:
+    """One bordered strip, 1px dividers: label, value, one quiet note."""
+    cells = "".join(f'<div class="m"><div class="k">{escape(k)}</div><div class="v">{escape(v)}</div>'
+                    f'<div class="n">{escape(n)}</div></div>' for k, v, n in items)
+    st.markdown(f'<div class="bs-strip">{cells}</div>', unsafe_allow_html=True)
 
 
 # ------------------------------------------------------------------------------------ publish page
 
 def _publish(user: dict, b: dict, people: list[dict], codes: set[str]) -> None:
-    ui.header("Publish results", f"Batch of {_day(b['id'])} · from the lab system")
+    ui.header("Publish results", f"Batch of {_day(b['id'])}")
+    _css()
 
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Reports", f"{b['reports']}")
-    k1.caption("All reports the lab system finished for this batch day.")
-    k2.metric("Ready", f"{b['ready']}")
-    k2.caption("Reports that may go out now: checked, matched, and not urgent.")
-    k3.metric("Code does not match", f"{b['code_mismatch']}")
-    k3.caption("The lab code on the sample does not match the record. A person checks these by hand.")
-    k4.metric("Urgent values", f"{b['urgent']}")
-    k4.caption("A value far outside the range. These are never delivered by an app first.")
+    _metric_strip([
+        ("Reports", f"{b['reports']}", "finished this batch day"),
+        ("Ready", f"{b['ready']}", "checked, matched, not urgent"),
+        ("Code does not match", f"{b['code_mismatch']}", "checked by hand"),
+        ("Urgent values", f"{b['urgent']}", "phone call first"),
+    ])
 
     # ------------------------------------------------------------------------------- held back
-    st.markdown("#### Held back")
-    st.caption("A report is held back when it is not safe to deliver it through the app: either the lab code "
-               "does not match the record, or a value is urgent. Held reports stay out of the batch until "
-               "someone at the lab clears them.")
-    st.caption("Doctor has phoned: records that the patient was told by telephone. Release: adds the report to "
-               "the batch, and for an urgent value it opens only after that call is recorded. Checked by hand, "
-               "release: for a code that does not match, after a person compared sample and record.")
+    _section("Held back", "Urgent values are released after the doctor has phoned the patient. "
+                          "A code that does not match is released after a check by hand.")
+    widths = [1.0, 2.2, 1.5, 1.5, 2.3]
+    h1, h2, h3, h4, h5 = st.columns(widths)
+    for col, label in zip((h1, h2, h3, h4, h5), ("Code", "Finding", "Reason", "State", "Action")):
+        col.markdown(f'<div class="bs-head">{label}</div>', unsafe_allow_html=True)
+
     for h in b["held"]:
-        left, right = st.columns([2.6, 2], vertical_alignment="center")
-        state = "Released" if h["released"] else "Doctor has phoned" if h["phoned"] else h["note"]
-        left.markdown(f'<div class="bs-card" style="margin-bottom:8px"><b>{escape(h["code"])}</b>'
-                      f'<div class="units">{escape(h["detail"])}</div>'
-                      f'<div class="sub">{escape(state)}</div></div>', unsafe_allow_html=True)
-        if h["released"]:
-            right.success("Released to the patient: it goes out with the batch.")
-            continue
-        if h["reason"] == "urgent":
-            c1, c2 = right.columns(2)
-            if c1.button("Doctor has phoned", key=f"phone_{h['code']}", use_container_width=True,
-                         disabled=h["phoned"]):
-                store.mark_phoned(h["code"], user["username"])
-                st.rerun()
-            # Kept visible but disabled before the call, so the rule is readable on the screen.
-            if c2.button("Release", key=f"rel_{h['code']}", use_container_width=True, disabled=not h["phoned"],
-                         type="primary" if h["phoned"] else "secondary"):
-                try:
-                    store.release_held(h["code"])
-                except ValueError as e:      # the store is the rule; the screen only reports it
-                    st.error(str(e))
-                else:
+        with st.container(key=f"hbrow-{h['code']}"):
+            c1, c2, c3, c4, c5 = st.columns(widths, vertical_alignment="center")
+            reason = "Urgent value" if h["reason"] == "urgent" else "Code does not match"
+            if h["released"]:
+                state = _mark("#15803d", "Released")
+            elif h["phoned"]:
+                state = _mark("#b45309", "Phone call recorded")
+            else:
+                state = _mark("#c8102e" if h["reason"] == "urgent" else "#b45309", "Waiting")
+            c1.markdown(f'<div class="bs-cell k">{escape(h["code"])}</div>', unsafe_allow_html=True)
+            c2.markdown(f'<div class="bs-cell">{escape(h["detail"])}</div>', unsafe_allow_html=True)
+            c3.markdown(f'<div class="bs-cell">{escape(reason)}</div>', unsafe_allow_html=True)
+            c4.markdown(state, unsafe_allow_html=True)
+            if h["released"]:
+                c5.markdown('<div class="bs-cell">goes out with the batch</div>', unsafe_allow_html=True)
+                continue
+            if h["reason"] == "urgent":
+                a1, a2 = c5.columns(2)
+                if a1.button("Record phone call", key=f"phone_{h['code']}", disabled=h["phoned"]):
+                    store.mark_phoned(h["code"], user["username"])
                     st.rerun()
-        else:
-            if right.button("Checked by hand, release", key=f"rel_{h['code']}", use_container_width=True):
-                try:
-                    store.release_held(h["code"])
-                except ValueError as e:
-                    st.error(str(e))
-                else:
-                    st.rerun()
+                # Kept visible but disabled before the call, so the rule is readable on the screen.
+                if a2.button("Release", key=f"rel_{h['code']}", disabled=not h["phoned"]):
+                    try:
+                        store.release_held(h["code"])
+                    except ValueError as e:      # the store is the rule; the screen only reports it
+                        st.error(str(e))
+                    else:
+                        st.rerun()
+            else:
+                if c5.button("Release after check", key=f"rel_{h['code']}"):
+                    try:
+                        store.release_held(h["code"])
+                    except ValueError as e:
+                        st.error(str(e))
+                    else:
+                        st.rerun()
 
     # -------------------------------------------------------------------------------- publish
-    st.markdown("#### Publish")
+    _section("Publish")
     notified = _notified_accounts(people, codes)
     if b["published"]:
-        st.markdown(f'<div class="bs-alert ok"><h4>Published</h4><p><b>{b["ready"]} reports</b> published to '
-                    f'patients. {len(notified)} patient account{"s" if len(notified) != 1 else ""} on this demo '
-                    f'{"were" if len(notified) != 1 else "was"} notified: the rest of the batch waits for people who '
-                    f'have not opened the app yet. This batch cannot be published a second time.</p></div>',
+        st.markdown(_mark("#15803d", f"Published · {b['ready']} reports · {len(notified)} accounts notified"),
                     unsafe_allow_html=True)
+        st.markdown('<div class="bs-help">A batch is published once.</div>', unsafe_allow_html=True)
     else:
-        if st.button(f"Publish {b['ready']} to patients", type="primary", key="publish_batch"):
+        held_open = len(b["held"]) - b["released_count"]
+        st.markdown(f'<div class="bs-help">{b["ready"]} of {b["reports"]} reports go out, '
+                    f'{held_open} stay held back. A batch is published once.</div>', unsafe_allow_html=True)
+        if st.button("Publish results", type="primary", key="publish_batch"):
             count = store.publish_batch(user["username"])
             st.session_state["published_count"] = count
             st.rerun()
-        st.caption(f"Publishing makes the ready reports visible in the patient app and sends a notification to "
-                   f"every patient with the results switch on. {b['ready']} of {b['reports']} reports go out; the "
-                   f"{len(b['held']) - b['released_count']} held back stay here. A batch is published once.")
 
     # --------------------------------------------------------------------- what the patient sees
-    st.markdown("#### What the patient sees")
+    _section("What the patient sees")
     v = _preview_value()
     st.markdown(
         f'<div class="bs-card" style="max-width:520px"><div class="bt">{v["name"]}</div>'
         f'<div class="units"><b>{v["value"]} {v["unit"]}</b> · the lab\'s range is {v["low"]} to {v["high"]} '
         f'{v["unit"]}</div>{ui.chip("Medium" if v["flag"] != "In range" else "Low", v["flag"])}'
-        f'<div class="sub" style="margin-top:10px;color:#52514e">Written by the AI<br>'
+        f'<div class="sub" style="margin-top:10px;color:#4b5563">'
         f'Ferritin shows how much iron your body has stored. Yours is under the lab\'s minimum.</div></div>',
         unsafe_allow_html=True)
-    st.caption("A preview of one value card from this batch. The text explains the value. It gives no diagnosis "
-               "and no cause. The doctor does that.")
+    st.markdown('<div class="bs-help">No diagnosis and no cause: the doctor does that.</div>',
+                unsafe_allow_html=True)
 
 
 # ----------------------------------------------------------------------------------- patients page
 
 def _patients(people: list[dict], codes: set[str]) -> None:
     ui.header("Patients", f"Patients of {store.LAB_NAME} with an account")
+    _css()
     q = st.text_input("Filter", key="pat_filter", placeholder="Search a name, lab code or blood type",
                       label_visibility="collapsed").strip().lower()
 
@@ -241,57 +289,56 @@ def _patients(people: list[dict], codes: set[str]) -> None:
 
     if rows:
         _table(["Name", "Lab code", "Blood type", "Consent switches", "Newest report", "In today's batch"], rows)
-        st.caption(f"{len(rows)} of {len(people)} patients shown. The lab knows its own patients by name. "
-                   "A blood centre never gets this list.")
+        st.markdown(f'<div class="bs-help">{len(rows)} of {len(people)} patients. '
+                    f'A blood centre never receives this list.</div>', unsafe_allow_html=True)
     else:
-        st.caption("No patient matches this filter.")
+        st.markdown('<div class="bs-help">No patient matches this filter.</div>', unsafe_allow_html=True)
 
-    st.markdown("#### Lab codes without an account")
+    _section("Lab codes without an account")
     free = store.unclaimed_lab_codes()
     if free:
         _table(["Lab code", "Newest report", "State"],
                [[escape(c), _day(_newest_report(c)) or "none", "waiting for a first open"] for c in free])
-        st.caption("These reports are published like the rest. They become visible when the person signs up "
-                   "with the lab code on their letter.")
+        st.markdown('<div class="bs-help">Published with the rest. Visible once the person signs up with the '
+                    'lab code on their letter.</div>', unsafe_allow_html=True)
     else:
-        st.caption("Every lab code in the demo has an account.")
+        st.markdown('<div class="bs-help">Every lab code has an account.</div>', unsafe_allow_html=True)
 
 
 # ------------------------------------------------------------------------------ blood requests page
 
 def _blood_requests(user: dict) -> None:
     ui.header("Blood requests", "Order blood components from a blood centre")
+    _css()
 
     notes = [n for n in store.notifications(user["username"]) if n["kind"] in ("network", "order")]
     if notes:
-        st.markdown("#### Notices from the network")
-        for n in notes[:4]:
-            st.markdown(f'<div class="bs-card" style="margin-bottom:8px"><b>{escape(n["title"])}</b>'
-                        f'<div class="units">{escape(n["body"])}</div>'
-                        f'<div class="sub">{escape(n["from"])} · {n["created_at"][11:16]}</div></div>',
-                        unsafe_allow_html=True)
-        st.caption("Supply constraints and answers on your orders arrive here first.")
+        _section("Notices from the network")
+        _table(["From", "Notice", "Detail", "Time"],
+               [[escape(n["from"]), escape(n["title"]), escape(n["body"]), n["created_at"][11:16]]
+                for n in notes[:4]])
 
     # ------------------------------------------------------------------------ submit a request
-    st.markdown("#### Submit an expected blood requirement")
-    st.caption("States what this hospital expects to need, so the blood centre can reserve it in time.")
-    c1, c2, c3 = st.columns(3)
+    _section("New request", "What this hospital expects to need, so the centre can reserve it in time.")
+    c1, c2 = st.columns(2)
     component = c1.selectbox("Component", store.ORDER_COMPONENTS, key="ord_component")
     blood_type = c2.selectbox("Blood type", store.BLOOD_TYPES, key="ord_blood")
+
+    c3, c4 = st.columns(2)
     units = c3.number_input("Units", min_value=1, max_value=60, value=4, step=1, key="ord_units")
+    needed_by = c4.date_input("Needed by", value=store.today() + timedelta(days=3), key="ord_needed")
 
     place_ids = list(store.PLACES)
-    c4, c5 = st.columns(2)
-    place = c4.selectbox("Blood centre", place_ids, index=place_ids.index("rbc") if "rbc" in place_ids else 0,
+    c5, c6 = st.columns(2)
+    place = c5.selectbox("Blood centre", place_ids, index=place_ids.index("rbc") if "rbc" in place_ids else 0,
                          format_func=lambda k: store.PLACES[k]["name"], key="ord_place")
-    needed_by = c5.date_input("Needed by", value=store.today() + timedelta(days=3), key="ord_needed")
+    procedure_date = c6.date_input("Procedure date", value=store.today() + timedelta(days=3), key="ord_proc_date")
 
-    c6, c7 = st.columns(2)
-    procedure = c6.text_input("Planned procedure", key="ord_procedure",
+    c7, c8 = st.columns(2)
+    procedure = c7.text_input("Planned procedure", key="ord_procedure",
                               placeholder="Hip replacement, theatre 2").strip()
-    procedure_date = c7.date_input("Procedure date", value=store.today() + timedelta(days=3), key="ord_proc_date")
-    note = st.text_area("Note for the blood centre", key="ord_note", height=80,
-                        placeholder="Anything the centre needs to know about this requirement.").strip()
+    note = c8.text_input("Note for the blood centre", key="ord_note",
+                         placeholder="Anything the centre needs to know").strip()
 
     approved = st.checkbox("Requested under the approved hospital transfusion process", key="ord_approved")
     if st.button("Submit request", type="primary", key="ord_submit", disabled=not approved):
@@ -300,55 +347,54 @@ def _blood_requests(user: dict) -> None:
                            needed_by.isoformat(), text, note)
         st.session_state["ord_flash"] = f"{units} units of {blood_type} {component.lower()} requested."
         st.rerun()
-    if not approved:
-        st.caption("Confirm the approved transfusion process before the request can be submitted.")
     flash = st.session_state.pop("ord_flash", None)
     if flash:
-        st.success(flash)
+        st.markdown(_mark("#15803d", flash), unsafe_allow_html=True)
 
     # ------------------------------------------------------------------------- orders and status
-    st.markdown("#### Your requests")
+    _section("Requests")
     mine = store.orders(by=user["username"])
     if not mine:
-        st.caption("No blood requests yet.")
+        st.markdown('<div class="bs-help">No blood requests yet.</div>', unsafe_allow_html=True)
         return
     _table(["Request", "Component", "Type", "Units", "Needed by", "Blood centre", "Status"],
            [[escape(o["id"]), escape(o["component"]), escape(o["blood_type"]), str(o["units"]),
-             _day(o["needed_by"]), escape(store.PLACES[o["to_place"]]["name"]), _order_chip(o["status"])]
-            for o in mine])
-    st.caption("Availability as answered by the blood centre. Each request keeps its own history and thread.")
+             _day(o["needed_by"]), escape(store.PLACES[o["to_place"]]["name"]),
+             _mark(ORDER_STATUS_COLOR.get(o["status"], "#4b5563"), o["status"].capitalize())]
+            for o in mine], numeric={3})
 
-    for o in mine:
-        with st.expander(f"{o['id']} · {o['units']} x {o['blood_type']} {o['component'].lower()} · {o['status']}"):
-            if o.get("procedure"):
-                st.caption(f"Planned procedure: {o['procedure']}")
-            if o.get("note"):
-                st.caption(f"Note: {o['note']}")
-            st.markdown("**Status history**")
-            for h in o["history"]:
-                st.markdown(f'<div class="bs-thread"><b>{escape(h["status"].capitalize())}</b>'
-                            f'<div class="units">{escape(h.get("note") or "")}</div>'
-                            f'<div class="who">{escape(h["by"])} · {escape(h["at"])}</div></div>',
-                            unsafe_allow_html=True)
-            st.markdown("**Messages with the blood centre**")
-            if o["messages"]:
-                for m in o["messages"]:
-                    st.markdown(f'<div class="bs-thread"><div class="units">{escape(m["text"])}</div>'
-                                f'<div class="who">{escape(m["by"])} ({escape(m["role"])}) · {escape(m["at"])}'
-                                f'</div></div>', unsafe_allow_html=True)
-            else:
-                st.caption("No messages on this request yet.")
-            reply = st.text_input("Message to the blood centre", key=f"msg_{o['id']}",
-                                  placeholder="Ask about availability or delivery.")
-            if st.button("Send message", key=f"send_{o['id']}", disabled=not reply.strip()):
-                store.order_message(o["id"], user["username"], reply.strip())
-                st.rerun()
+    ids = [o["id"] for o in mine]
+    pick = st.selectbox("Order", ids, key="ord_pick")
+    o = next((x for x in mine if x["id"] == pick), mine[0])
+
+    lines = []
+    if o.get("procedure"):
+        lines.append(f'<div class="bs-ev">Procedure · {escape(o["procedure"])}</div>')
+    if o.get("note"):
+        lines.append(f'<div class="bs-ev">Note · {escape(o["note"])}</div>')
+    history = "".join(f'<div class="bs-ev"><b>{escape(h["status"].capitalize())}</b> '
+                      f'{escape(h.get("note") or "")}<div class="who">{escape(h["by"])} · '
+                      f'{escape(h["at"])}</div></div>' for h in o["history"])
+    messages = "".join(f'<div class="bs-ev">{escape(m["text"])}<div class="who">{escape(m["by"])} '
+                       f'({escape(m["role"])}) · {escape(m["at"])}</div></div>' for m in o["messages"])
+    if not messages:
+        messages = '<div class="bs-ev">No messages yet.</div>'
+    st.markdown(f'<div class="bs-panel">{"".join(lines)}<div class="t">Status history</div>{history}'
+                f'<div class="t">Messages with the blood centre</div>{messages}</div>', unsafe_allow_html=True)
+
+    m1, m2 = st.columns([3, 1], vertical_alignment="bottom")
+    reply = m1.text_input("Message to the blood centre", key=f"msg_{o['id']}",
+                          placeholder="Ask about availability or delivery.")
+    if m2.button("Send message", key=f"send_{o['id']}", disabled=not reply.strip()):
+        store.order_message(o["id"], user["username"], reply.strip())
+        st.rerun()
 
 
 # ------------------------------------------------------------------------------ notify patients page
 
 def _notify(user: dict, people: list[dict]) -> None:
     ui.header("Notify patients")
+    _css()
     st.session_state.setdefault("sent_log", [])
     # A send empties the form on the next run (widget keys cannot be written once the widgets exist),
     # so a second press cannot send the same message again.
@@ -356,21 +402,23 @@ def _notify(user: dict, people: list[dict]) -> None:
         st.session_state.update(notify_title="", notify_body="")
     flash = st.session_state.pop("notify_flash", None)
 
-    audience_label = st.selectbox("Who gets it", ["All patients", "Donors only", "One patient"], key="notify_audience")
+    c1, c2 = st.columns(2)
+    audience_label = c1.selectbox("Who gets it", ["All patients", "Donors only", "One patient"],
+                                  key="notify_audience")
     audience = {"All patients": "all", "Donors only": "donors", "One patient": "one"}[audience_label]
 
     people = sorted(people, key=lambda p: p["name"])
     one = None
     if audience == "one":
-        pick = st.selectbox("Which patient", [f"{p['name']} ({p['lab_code']})" for p in people], key="notify_one")
+        pick = c2.selectbox("Which patient", [f"{p['name']} ({p['lab_code']})" for p in people], key="notify_one")
         one = next((p["username"] for p in people if f"{p['name']} ({p['lab_code']})" == pick), None)
 
-    cols = st.columns(len(TEMPLATES) + 1)
-    for i, (title, body, _aud) in enumerate(TEMPLATES):
-        if cols[i].button(title, key=f"tpl_{i}", use_container_width=True):
-            st.session_state.update(notify_title=title, notify_body=body, notify_audience="All patients")
+    t1, t2, t3, _pad = st.columns([1.4, 1.8, 0.7, 2.1])
+    for col, (i, (title_t, body_t, _aud)) in zip((t1, t2), enumerate(TEMPLATES)):
+        if col.button(title_t, key=f"tpl_{i}"):
+            st.session_state.update(notify_title=title_t, notify_body=body_t, notify_audience="All patients")
             st.rerun()
-    if cols[-1].button("Clear", key="tpl_clear", use_container_width=True):
+    if t3.button("Clear", key="tpl_clear"):
         st.session_state.update(notify_title="", notify_body="")
         st.rerun()
 
@@ -382,33 +430,34 @@ def _notify(user: dict, people: list[dict]) -> None:
     note = {"all": "patients with the results switch on",
             "donors": "patients with the donor part on and not paused",
             "one": "the selected patient"}[audience]
-    st.markdown(f'<div class="bs-card"><b>{len(targets)} '
-                f'{"people" if len(targets) != 1 else "person"} will get this</b>'
-                f'<div class="units">{note}: {escape(", ".join(p["name"] for p in targets) or "nobody")}</div></div>',
-                unsafe_allow_html=True)
+    st.markdown(f'<div class="bs-help">Recipients · {len(targets)} · {escape(note)} · '
+                f'{escape(", ".join(p["name"] for p in targets) or "nobody")}</div>', unsafe_allow_html=True)
 
     if st.button("Send notification", type="primary", key="send_notify", disabled=not (title and body and targets)):
         count = store.send_message(user["username"], audience, title, body, to=one)
         st.session_state["sent_log"].insert(0, {"title": title, "audience": audience_label, "count": count})
         st.session_state.update(notify_reset=True, notify_flash=st.session_state["sent_log"][0])
         st.rerun()
-    if not (title and body):
-        st.caption("A title and a message are needed before sending.")
 
     if flash:  # shown once, right after the send it belongs to
-        st.success(f'Sent "{flash["title"]}" to {flash["count"]} '
-                   f'{"people" if flash["count"] != 1 else "person"} ({flash["audience"].lower()}).')
+        st.markdown(_mark("#15803d", f'Sent "{flash["title"]}" to {flash["count"]} '
+                                     f'{"people" if flash["count"] != 1 else "person"}'),
+                    unsafe_allow_html=True)
     if st.session_state["sent_log"]:
-        st.markdown("#### Sent this session")
+        _section("Sent this session")
         _table(["Title", "Audience", "Recipients"],
-               [[escape(s["title"]), escape(s["audience"]), str(s["count"])] for s in st.session_state["sent_log"]])
+               [[escape(s["title"]), escape(s["audience"]), str(s["count"])] for s in st.session_state["sent_log"]],
+               numeric={2})
 
 
 # --------------------------------------------------------------------------------- donor link page
 
 def _donor_link(people: list[dict]) -> None:
     ui.header("Donor link", "The one fact the lab passes on")
-    st.markdown("The lab passes on one fact: the blood type of patients who opted in.")
+    _css()
+    st.markdown('<div class="bs-help">Passed on: the blood type of patients who opted in. Not passed on: values, '
+                'ranges, test names, names, addresses or lab codes. A centre reads blood types as a count and '
+                'learns a name only when someone books a slot.</div>', unsafe_allow_html=True)
 
     on = [p for p in sorted(people, key=lambda p: p["name"]) if _donor_on(p)]
     if on:
@@ -417,10 +466,7 @@ def _donor_link(people: list[dict]) -> None:
                  escape(", ".join(SWITCH_LABELS[k] for k in ("nearby", "gave_before") if p["switches"].get(k)))]
                 for p in on])
     else:
-        st.caption("No account has the donor part on.")
-    st.caption("Not passed on: values, ranges, test names, names, addresses, lab codes, or anything about a "
-               "patient who did not opt in. A blood centre reads the blood type as a count and learns a name "
-               "only when someone books a slot.")
+        st.markdown('<div class="bs-help">No account has the donor part on.</div>', unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------------------------- router

@@ -21,10 +21,10 @@ SLOT_TIMES = ["09:00", "13:00", "16:30"]       # a few times a day
 RADIUS_OPTIONS = [10, 25, 50]
 TYPES = store.BLOOD_TYPES + [store.ANY_TYPE]
 
-# Status chips for a request. ui.chip carries the forecast risk colors, which mean something else here.
-_STATUS = {"draft": ("#52514e", "#f0efec", "Draft"),
-           "sent": ("#2a78d6", "#e8f1fc", "Sent"),
-           "closed": ("#0a7d0a", "#e6f4e6", "Closed")}
+# Status marks for a request: a dot and plain coloured text, never a pill.
+_STATUS = {"draft": ("#6b7280", "Draft"),
+           "sent": ("#1d4ed8", "Sent"),
+           "closed": ("#15803d", "Closed")}
 
 
 # ------------------------------------------------------------------------- formatting helpers
@@ -63,9 +63,20 @@ def _order(req: dict) -> int:
     return int(req["id"].split("-")[-1])
 
 
+def _mark(color: str, label: str) -> str:
+    """A status mark: 6px dot, then plain coloured text. No pill, no tint, no border."""
+    return (f'<span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;'
+            f'color:{color}"><span style="width:6px;height:6px;border-radius:50%;background:{color};'
+            f'display:inline-block"></span>{label}</span>')
+
+
 def _chip(status: str) -> str:
-    color, bg, label = _STATUS.get(status, _STATUS["draft"])
-    return f'<span class="bs-chip" style="background:{bg};color:{color}">{label}</span>'
+    color, label = _STATUS.get(status, _STATUS["draft"])
+    return _mark(color, label)
+
+
+def _h(text: str) -> None:
+    st.markdown(f'<div class="bsx-h">{text}</div>', unsafe_allow_html=True)
 
 
 def _rules(blood_type: str, radius: int) -> str:
@@ -83,17 +94,22 @@ _COLS = ('<colgroup><col style="width:22%"><col style="width:18%"><col style="wi
          '<col style="width:34%"><col style="width:15%"></colgroup>')
 
 # Every table on this screen: full width, fixed layout, and cells that do not hug the left edge.
-_GRID_CSS = """
-<style>
-.bs-rec table {width: 100%; table-layout: fixed; border-collapse: collapse;}
-.bs-rec table td {padding: 10px 14px; vertical-align: top; word-break: break-word;}
-.bs-rec table tr:first-child td {padding-bottom: 6px;}
-.bs-rec {padding: 14px 6px;}
-div[data-testid="stMetric"] {padding: 10px 14px; border: 1px solid #e1e0d9; border-radius: 10px; background: #fff;}
-div[data-testid="stMetricValue"] {font-size: 1.5rem;}
-div[data-testid="stForm"] {padding: 16px 18px; border-radius: 10px;}
-</style>
-"""
+_GRID_CSS = """<style>
+.bs-rec {padding: 16px 18px;}
+.bs-rec table {width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px;}
+.bs-rec table td {padding: 8px 12px; vertical-align: top; word-break: break-word; border-top: 1px solid #e5e4df; color: #4b5563; font-weight: 400;}
+.bs-rec table td:first-child {padding-left: 0;}
+.bs-rec table td:last-child {padding-right: 0; text-align: right; font-weight: 600; color: #111827;}
+.bs-rec table tr:first-child td {border-top: none;}
+.bs-rec table tr.hd td {font-size: 11.5px; font-weight: 600; color: #6b7280; text-align: left;}
+.bsx-h {font-size: 15px; font-weight: 600; color: #111827; margin: 24px 0 8px;}
+.bsx-strip {display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid #e5e4df; border-radius: 10px; background: #fff; margin: 4px 0 10px;}
+.bsx-strip > div {padding: 10px 14px; border-left: 1px solid #e5e4df;}
+.bsx-strip > div:first-child {border-left: none;}
+.bsx-strip .l {font-size: 12px; color: #6b7280;}
+.bsx-strip .v {font-size: 24px; font-weight: 600; color: #111827; line-height: 1.3;}
+.bsx-note {font-size: 12.5px; color: #4b5563;}
+</style>"""
 
 MANY = 100000                                  # "show everything": no booking is ever hidden behind a count
 
@@ -103,11 +119,11 @@ def _grid_css() -> None:
 
 
 def _booked_by(b: dict) -> str:
-    return "app account" if b["real"] else "BloodSight AI"
+    return _mark("#1d4ed8", "App account") if b["real"] else _mark("#6b7280", "BloodSight AI")
 
 
 def _booking_table(named: list[dict]) -> str:
-    head = (f'<tr style="color:#898781;font-size:.8rem"><td>Slot</td><td>Name</td><td>Blood type</td>'
+    head = (f'<tr class="hd"><td>Slot</td><td>Name</td><td>Blood type</td>'
             f'<td>Note</td><td {_PLAIN}>Booked by</td></tr>')
     rows = "".join(
         f"<tr><td>{_slot(b['slot'])}</td><td><b>{b['name']}</b></td><td>{b['blood_type'] or ''}</td>"
@@ -220,17 +236,17 @@ def _new_request_form(user: dict) -> None:
 
     with right:
         m = store.match_count(blood_type, radius)
-        st.markdown("##### Who gets it")
+        _h("Who gets it")
         st.markdown(
-            f'<div class="bs-rec"><b style="font-size:1.35rem">{m["total"]:,} people match</b><table>'
+            f'<div class="bs-rec"><div style="font-size:15px;font-weight:600;color:#111827;margin-bottom:4px">'
+            f'{m["total"]:,} people match</div><table>'
             f'<tr><td>Patients of {store.LAB_NAME}</td><td>{m["patients"]:,}</td></tr>'
             f'<tr><td>Gave at this centre before</td><td>{m["gave_before"]:,}</td></tr>'
             f'<tr><td>Expected bookings</td><td>about {m["expected_bookings"]:,}</td></tr></table></div>',
             unsafe_allow_html=True)
         st.caption(_rules(blood_type, radius))
-        st.caption(f"Expected bookings: about {store.EXPECTED_BOOKING_RATE:.0%} of the people asked, "
-                   "from earlier requests.")
-        st.markdown("**You see a count, not names. A name appears only when that person books a slot.**")
+        st.caption(f"Expected bookings: about {store.EXPECTED_BOOKING_RATE:.0%} of the people asked.")
+        st.markdown('<div class="bsx-note">Names appear only after a booking.</div>', unsafe_allow_html=True)
 
     # One open request per blood type: a second one would ask the same people twice and count them twice.
     already_open = store.open_request(PLACE, blood_type)
@@ -241,7 +257,7 @@ def _new_request_form(user: dict) -> None:
     problem = ("Choose at least one slot." if not slots else
                "Write the message people read." if not message.strip() else
                f"Set a target of at least 1 donation, at most {MAX_TARGET:,}." if target is None else None)
-    if b1.button(f"Send to {m['total']:,} people", type="primary", use_container_width=True, key="send_new",
+    if b1.button(f"Send request to {m['total']:,} people", type="primary", key="send_new",
                  disabled=already_open is not None,
                  help=_open_notice(already_open) if already_open else None):
         if problem:
@@ -255,9 +271,8 @@ def _new_request_form(user: dict) -> None:
             else:
                 st.session_state["req_flash"] = f"{req['id']} sent to {req['matched']['total']:,} people."
                 _clear_form()
-                st.session_state["req_form_open"] = False       # the sent card below is the next thing to read
                 st.rerun()
-    if b2.button("Save draft", use_container_width=True, key="save_draft"):
+    if b2.button("Save draft", key="save_draft"):
         if problem:
             st.error(problem)
         else:
@@ -267,11 +282,9 @@ def _new_request_form(user: dict) -> None:
             except ValueError as e:
                 st.error(str(e))
             else:
-                st.session_state["req_flash"] = f"{req['id']} saved as a draft. You can send it later."
+                st.session_state["req_flash"] = f"{req['id']} saved as a draft."
                 _clear_form()
-                st.session_state["req_form_open"] = False
                 st.rerun()
-    st.caption("The model recommends. A staff member presses send.")
 
 
 # --------------------------------------------------------------------------------- request list
@@ -287,7 +300,8 @@ def _request_card(req: dict) -> None:
 
         if req["status"] == "draft":
             st.caption(f"{req['matched']['total']:,} people match. Nobody has been asked yet.")
-            if st.button(f"Send to {req['matched']['total']:,} people", type="primary", key=f"send_{req['id']}"):
+            if st.button(f"Send request to {req['matched']['total']:,} people", type="primary",
+                         key=f"send_{req['id']}"):
                 try:
                     store.send_request(req["id"])
                 except ValueError as e:
@@ -297,12 +311,13 @@ def _request_card(req: dict) -> None:
                     st.rerun()
             return
 
-        st.markdown(f"**Day {min(req['day'], SIM_DAYS)} of {SIM_DAYS}**")
-        k = st.columns(4)
-        k[0].metric("Asked", f"{stats['asked']:,}")
-        k[1].metric("Seen", f"{stats['seen']:,}")
-        k[2].metric("Booked", f"{stats['booked']:,}")
-        k[3].metric("Not this time", f"{stats['not_this_time']:,}")
+        st.markdown(f'<div class="bsx-note">Day {min(req["day"], SIM_DAYS)} of {SIM_DAYS}</div>',
+                    unsafe_allow_html=True)
+        counts = (("Asked", stats["asked"]), ("Seen", stats["seen"]),
+                  ("Booked", stats["booked"]), ("Not this time", stats["not_this_time"]))
+        st.markdown('<div class="bsx-strip">'
+                    + "".join(f'<div><div class="l">{l}</div><div class="v">{v:,}</div></div>' for l, v in counts)
+                    + "</div>", unsafe_allow_html=True)
         # The bar stops at full; the text keeps the true numbers, so an over-target request reads honestly.
         st.progress(min(stats["booked"] / max(req["target"], 1), 1.0),
                     text=f"{stats['booked']:,} of {req['target']:,} booked"
@@ -325,9 +340,10 @@ def _request_card(req: dict) -> None:
         # What closing does, before the click: it stops new bookings, it does not undo the ones already made.
         close_help = "Closing stops new bookings. Booked appointments are kept."
         st.caption(close_help)
-        a1, a2, _ = st.columns([1.2, 1, 2.2])
-        if a1.button("Advance one day", key=f"day_{req['id']}", help="Demo control: moves this request one day "
-                     "forward in the response curve generated by BloodSight AI.", disabled=req["day"] >= SIM_DAYS):
+        a1, a2, _ = st.columns([1, 1, 2.6])
+        if a1.button("Advance one day", key=f"day_{req['id']}",
+                     help="Moves this request one day forward in the response curve.",
+                     disabled=req["day"] >= SIM_DAYS):
             store.advance_day(req["id"])
             st.rerun()
         if a2.button("Close request", key=f"close_{req['id']}", help=close_help):
@@ -338,21 +354,18 @@ def _request_card(req: dict) -> None:
 
 
 def _requests_page(user: dict, flash: str | None) -> None:
-    ui.header("Requests", "A request, before and after sending.")
+    ui.header("Requests")
     _grid_css()
     if flash:
         st.success(flash)
-    if st.session_state.get("request_prefill"):
-        st.session_state["req_form_open"] = True        # the outlook handed a recommendation over: open the form
-    with st.expander("New request", expanded=st.session_state.setdefault("req_form_open", True)):
+    _h("New request")
+    with st.container(border=True):
         _new_request_form(user)
-    st.divider()
-    st.markdown("#### This centre's requests")
+    _h("This centre's requests")
     mine = sorted(store.requests(PLACE), key=_order, reverse=True)      # newest first
     if not mine:
-        st.caption("No requests yet. The form above makes the first one.")
+        st.caption("No requests yet.")
         return
-    st.caption("Population responses are generated by BloodSight AI. Bookings by app accounts are live.")
     for req in mine:
         _request_card(req)
 
@@ -360,19 +373,17 @@ def _requests_page(user: dict, flash: str | None) -> None:
 # -------------------------------------------------------------------------------- bookings page
 
 def _bookings_page() -> None:
-    ui.header("Bookings", "People who booked a slot. This is the only place a name reaches the centre.")
+    ui.header("Bookings", "Names appear only after a booking.")
     _grid_css()
     live = [r for r in store.requests(PLACE) if r["status"] != "draft"]
     if not live:
         st.caption("No request has been sent yet.")
         return
-    st.caption("Population responses are generated by BloodSight AI. Bookings by app accounts are live, "
-               "and they come first in every table.")
     for req in sorted(live, key=_order, reverse=True):
         bk = _all_bookings(req["id"])
-        st.markdown(f"##### {req['blood_type']} · {req['id']} · {bk['total']:,} booked")
+        _h(f"{req['blood_type']} · {req['id']} · {bk['total']:,} booked")
         if not bk["named"]:
-            st.caption("Nobody has booked yet. Everyone else stays a count.")
+            st.caption("No bookings yet.")
             continue
         _booking_block(bk["named"])
 
@@ -411,24 +422,24 @@ def _network_map(sites: list[dict]):
 
 
 def _network_page(user: dict) -> None:
-    ui.header("Network", "The blood centres and hospitals of the region, and what they tell each other.")
+    ui.header("Network", "Blood centres and hospitals of the region.")
     _grid_css()
     sites = store.network_map()
     st.plotly_chart(_network_map(sites), use_container_width=True, config={"displayModeBar": False})
 
     left, right = st.columns([1, 1.15], gap="large")
     with left:
-        st.markdown("##### Sites in the network")
+        _h("Sites in the network")
         rows = "".join(
             f'<tr><td><b>{s["name"]}</b></td><td>{s["kind"].capitalize()}</td>'
             f'<td style="text-align:left;font-weight:400">{s["lat"]:.3f}, {s["lon"]:.3f}</td></tr>'
             for s in sites)
         st.markdown(
-            '<div class="bs-rec"><table><tr style="color:#898781;font-size:.8rem"><td>Site</td><td>Kind</td>'
+            '<div class="bs-rec"><table><tr class="hd"><td>Site</td><td>Kind</td>'
             f'<td {_PLAIN}>Position</td></tr>{rows}</table></div>', unsafe_allow_html=True)
 
     with right:
-        st.markdown("##### Notify the network")
+        _h("Notify the network")
         with st.form("network_notice", border=True):
             c1, c2 = st.columns(2)
             kind = c1.selectbox("Kind of notice", ["Deficiency", "Surplus"], key="net_kind")
@@ -436,21 +447,20 @@ def _network_page(user: dict) -> None:
             units = st.number_input("Units", min_value=1, max_value=5000, value=50, step=10, key="net_units")
             note = st.text_area("Note for the other centres", key="net_note", height=90,
                                 placeholder="What is needed or available, and by when.")
-            if st.form_submit_button("Send to the network", type="primary", use_container_width=True):
+            if st.form_submit_button("Send notice", type="primary", use_container_width=True):
                 notice = store.send_network_notice(user["username"], kind.lower(), bt, int(units), note.strip())
                 st.session_state["net_flash"] = notice["id"]
                 st.rerun()
-        st.caption("A notice reaches every blood centre account of the app. The other sites of the region are "
-                   "listed as informed.")
+        st.caption("A notice reaches every blood centre account. Other sites of the region are listed as informed.")
 
     sent = st.session_state.pop("net_flash", None)
     if sent:
         st.success(f"{sent} sent to the network.")
 
-    st.markdown("#### Notices")
+    _h("Notices")
     notices = store.network_notices()
     if not notices:
-        st.caption("No notice has been sent yet. The form above sends the first one.")
+        st.caption("No notice has been sent yet.")
         return
     for n in notices:
         word = "needs" if n["kind"] == "deficiency" else "can spare"
@@ -472,8 +482,7 @@ def _order_card(user: dict, o: dict) -> None:
         head, chip = st.columns([3, 1], vertical_alignment="center")
         head.markdown(f"**{o['id']} · {o['units']} x {o['blood_type']} {o['component'].lower()}** "
                       f"for {o['from_org']}")
-        chip.markdown(f"<div style='text-align:right'><span class='bs-chip' "
-                      f"style='background:#e8f1fc;color:#2a78d6'>{o['status'].capitalize()}</span></div>",
+        chip.markdown(f"<div style='text-align:right'>{_mark('#1d4ed8', o['status'].capitalize())}</div>",
                       unsafe_allow_html=True)
         st.caption(f"Needed by {_day(o['needed_by'])}"
                    + (f" · {o['procedure']}" if o.get("procedure") else "")
@@ -522,12 +531,13 @@ def _orders_page(user: dict) -> None:
         st.success(flash)
     items = store.orders(to_place=PLACE)
 
-    with st.expander("Supply constraint notice", expanded=False):
+    _h("Supply constraint notice")
+    with st.container(border=True):
         c1, c2 = st.columns([1, 3], gap="large")
         bt = c1.selectbox("Blood type", store.BLOOD_TYPES, key="sc_bt")
-        text = c2.text_input("What the hospitals and labs need to know", key="sc_text",
+        text = c2.text_input("Notice", key="sc_text",
                              placeholder="Red cells O- are rationed until Friday: urgent cases first.")
-        if st.button("Send the notice", key="sc_send", type="primary"):
+        if st.button("Send notice", key="sc_send", type="primary"):
             if text.strip():
                 n = store.supply_constraint_notice(user["username"], bt, text.strip())
                 st.success(f"Supply constraint on {bt} sent to {n} account{'s' if n != 1 else ''}.")
@@ -538,12 +548,12 @@ def _orders_page(user: dict) -> None:
         st.caption("No hospital or lab has ordered from this centre yet.")
         return
 
-    st.markdown("#### All orders")
+    _h("All orders")
     rows = "".join(
         f'<tr><td>{o["id"]}</td><td>{o["from_org"]}</td><td>{o["component"]}</td><td>{o["blood_type"]}</td>'
         f'<td>{o["units"]:,}</td><td>{_day(o["needed_by"])}</td><td>{o.get("procedure") or ""}</td>'
         f'<td {_PLAIN}>{o["status"].capitalize()}</td></tr>' for o in items)
-    table = ('<div class="bs-rec"><table><tr style="color:#898781;font-size:.8rem"><td>Order</td><td>From</td>'
+    table = ('<div class="bs-rec"><table><tr class="hd"><td>Order</td><td>From</td>'
              '<td>Component</td><td>Blood type</td><td>Units</td><td>Needed by</td><td>Planned procedure</td>'
              f'<td {_PLAIN}>Status</td></tr>{rows}</table></div>')
     if len(items) > 8:
@@ -552,7 +562,7 @@ def _orders_page(user: dict) -> None:
     else:
         st.markdown(table, unsafe_allow_html=True)
 
-    st.markdown("#### Answer an order")
+    _h("Answer an order")
     for o in items:
         _order_card(user, o)
 
@@ -589,5 +599,5 @@ def render(user: dict) -> None:
     elif page == "Hospital orders":
         _orders_page(user)
     else:
-        ui.header("Notifications", "The centre hears about a booking the moment it is made.")
+        ui.header("Notifications")
         ui.notification_list(user["username"], "Nothing yet. Bookings and answers arrive here.")

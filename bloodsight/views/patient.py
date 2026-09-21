@@ -1,6 +1,6 @@
-"""Patient side: Results, Needs, Donations, Ask, Notifications, Me.
+"""Donor side: Results, Needs, Donations, Ask, Notifications, Me.
 
-Everything on these screens is this person's own data. Nothing leaves the patient side except a
+Everything on these screens is this person's own data. Nothing leaves the donor side except a
 name attached to a booking (store.book). The assistant and the value screen never diagnose and
 never give a cause: both refuse and point to the doctor.
 """
@@ -136,6 +136,27 @@ def _donor_on(user: dict) -> bool:
     return bool(sw.get("nearby") or sw.get("gave_before"))
 
 
+def _link_lab_code(user: dict, where: str) -> None:
+    """Compact panel for a donor who signed up without a lab code. Shown on Results and under Me.
+
+    The store raises ValueError with the reason a code is refused, so the message the donor reads is the
+    store's own wording and never a rewritten one.
+    """
+    st.markdown('<div class="bs-card" style="padding:18px 22px;margin-bottom:10px">'
+                '<b>Link your lab results</b>'
+                '<div class="units">Your lab code is printed on your lab letter. '
+                'Enter it once and your results appear here.</div></div>', unsafe_allow_html=True)
+    left, right = st.columns([2.2, 1], vertical_alignment="bottom")
+    code = left.text_input("Lab code", placeholder="BL-4821", key=f"labcode_{where}")
+    if right.button("Link", key=f"labcode_btn_{where}", type="primary", use_container_width=True):
+        try:
+            store.link_lab_code(user["username"], code)
+        except ValueError as exc:
+            st.error(str(exc))
+        else:
+            st.rerun()
+
+
 # ------------------------------------------------------------------ text written by the AI
 
 def _trend_sentence(hist: list[dict]) -> str:
@@ -200,7 +221,7 @@ def _doctor_summary(user: dict, report: dict) -> str:
     if d["total"]:
         lines.append(f"Donations on record: {d['total']} at {d['places']} places. "
                      f"Last donation: {_day(d['history'][0]['date'])}.")
-    lines += ["", "This summary was put together by a prototype from this person's own lab reports.",
+    lines += ["", "This summary was put together from this person's own lab reports.",
               "It contains no diagnosis and no cause."]
     return "\n".join(lines)
 
@@ -213,7 +234,8 @@ def _value_cards(values: list[dict], report: dict, prefix: str) -> None:
         row = values[row_start:row_start + 3]
         for col, v in zip(st.columns(3), row):
             with col:
-                st.markdown(f'<div class="bs-card"><div class="units" style="margin:0 0 6px">{v["name"]}</div>'
+                st.markdown(f'<div class="bs-card" style="padding:16px 20px">'
+                            f'<div class="units" style="margin:0 0 6px">{v["name"]}</div>'
                             f'<div class="bt">{_num(v["value"])} <span style="font-size:.9rem;font-weight:400;'
                             f'color:{ui.INK_2}">{v["unit"]}</span></div>'
                             f'<div class="sub" style="margin:6px 0 8px">Range printed by the lab: '
@@ -272,7 +294,8 @@ def _value_page(user: dict, report: dict, key: str) -> None:
         st.rerun()
 
     st.markdown(f"### {v['name']}")
-    st.markdown(f'<div class="bs-card"><div class="bt" style="font-size:2.1rem">{_num(v["value"])} '
+    st.markdown(f'<div class="bs-card" style="padding:18px 22px">'
+                f'<div class="bt" style="font-size:2.1rem">{_num(v["value"])} '
                 f'<span style="font-size:1rem;font-weight:400;color:{ui.INK_2}">{v["unit"]}</span> '
                 f'{_flag_chip(v["flag"])}</div>'
                 f'<div class="sub">Range printed by the lab: {_num(v["low"])} to {_num(v["high"])} {v["unit"]}'
@@ -283,14 +306,14 @@ def _value_page(user: dict, report: dict, key: str) -> None:
     with left:
         _trend_chart(hist, v)
     with right:
-        st.markdown("##### 🤖 Written by the AI")
-        st.markdown(f'<div class="bs-rec">{_ai_text(v, hist)}</div>', unsafe_allow_html=True)
-        st.caption("In this prototype the text is put together from templates and from your own values. "
-                   "It is not medical advice and it is not a diagnosis.")
+        st.markdown("##### BloodSight AI explanation")
+        st.markdown(f'<div class="bs-rec" style="padding:16px 20px">{_ai_text(v, hist)}</div>',
+                    unsafe_allow_html=True)
+        st.caption("This text is not medical advice and it is not a diagnosis.")
         if key in DONOR_NOTES:
-            st.markdown(f'<div class="bs-card" style="margin-top:8px"><b>For donors</b>'
+            st.markdown(f'<div class="bs-card" style="margin-top:8px;padding:16px 20px"><b>For donors</b>'
                         f'<div class="units">{DONOR_NOTES[key]}</div></div>', unsafe_allow_html=True)
-    st.caption(f"source: report of {_short(report['date'])}, line {v['line']}")
+    st.caption(f"Source: report of {_short(report['date'])}, line {v['line']}")
     st.download_button("Summary for my doctor", _doctor_summary(user, report), type="primary",
                        file_name=f"bloodsight-summary-{report['date']}.txt", mime="text/plain",
                        key=f"dl_{report['id']}_{key}")
@@ -299,6 +322,10 @@ def _value_page(user: dict, report: dict, key: str) -> None:
 def _results(user: dict) -> None:
     if not user.get("switches", {}).get("results"):
         st.info("Your results are switched off. Turn on 'Show me my lab results' under Me to see them here.")
+        return
+    if not user.get("lab_code"):
+        # Signed up without a lab code: nothing can be shown until the account is tied to a lab record.
+        _link_lab_code(user, "results")
         return
     reports = store.reports_for(user["username"])
     if not reports:
@@ -322,16 +349,23 @@ def _results(user: dict) -> None:
     st.markdown(f"#### Blood test of {_day(picked['date'])} · {picked['lab']} · {len(picked['values'])} values "
                 f"· {len(out)} out of range")
 
+    # Every value of the report is on the page: out of range first, then all in-range values. Nothing is
+    # folded away, so the count in the heading always matches what is visible.
     if out:
-        st.caption("Outside the range the lab printed")
+        st.markdown('<div style="padding:4px 4px 2px;font-weight:600">Outside the range the lab printed</div>',
+                    unsafe_allow_html=True)
         _value_cards(out, picked, "out")
     else:
-        st.markdown('<div class="bs-alert ok"><h4>🟢 Every value is inside the range the lab printed</h4>'
+        st.markdown('<div class="bs-alert ok" style="padding:14px 20px">'
+                    '<h4>Every value is inside the range the lab printed</h4>'
                     '<p>Nothing in this report is flagged.</p></div>', unsafe_allow_html=True)
     if ok:
-        with st.expander(f"{len(ok)} more values, all in range" if out else f"{len(ok)} values, all in range"):
-            _value_cards(ok, picked, "in")
-    st.caption(f"Blood type from this test: {picked['blood_type']}")
+        st.markdown(f'<div style="padding:12px 4px 2px;font-weight:600">Inside the range the lab printed '
+                    f'({len(ok)} values)</div>', unsafe_allow_html=True)
+        _value_cards(ok, picked, "in")
+    st.markdown(f'<div class="bs-card" style="padding:14px 20px;margin-top:10px">'
+                f'<div class="units" style="margin:0">Blood type from this test: '
+                f'<b>{picked["blood_type"]}</b></div></div>', unsafe_allow_html=True)
 
     # Bridge to the donor side. Only for people who switched the donor part on, and only if something is open.
     needs = store.needs_for(user["username"]) if _donor_on(user) else []
@@ -344,7 +378,8 @@ def _results(user: dict) -> None:
             what = "plasma, which any blood type can give"
         one = len(needs) == 1
         st.markdown("")
-        st.markdown(f'<div class="bs-card"><b>{len(needs)} {"place" if one else "places"} near you '
+        st.markdown(f'<div class="bs-card" style="padding:16px 20px"><b>{len(needs)} '
+                    f'{"place" if one else "places"} near you '
                     f'{"needs" if one else "need"} {what}</b>'
                     f'<div class="units">You switched this on. Giving blood is up to you, every time.'
                     f'</div></div>', unsafe_allow_html=True)
@@ -477,7 +512,8 @@ def _donations(user: dict) -> None:
     st.markdown("##### Where it went")
     if d["history"]:
         for h in d["history"]:
-            st.markdown(f'<div class="bs-card" style="margin-bottom:8px"><b>{_day(h["date"])} · {h["kind"]}</b>'
+            st.markdown(f'<div class="bs-card" style="margin-bottom:8px;padding:16px 20px">'
+                        f'<b>{_day(h["date"])} · {h["kind"]}</b>'
                         f'<div class="units">{h["place_name"]}</div>'
                         f'<div class="sub">{h["used"]}</div></div>', unsafe_allow_html=True)
     else:
@@ -595,8 +631,7 @@ def _ask(user: dict) -> None:
         if col.button(s, key=f"sug_{s}", use_container_width=True):
             asked = s
     typed = st.chat_input("Ask about your own results, donations or needs")
-    st.caption("The assistant in this prototype follows rules and templates, and reads only this person's own "
-               "data. It gives no diagnosis, no cause and no promise that you can give blood.")
+    st.caption("The assistant gives no diagnosis, no cause and no promise that you can give blood.")
     asked = typed or asked
     if asked:
         log.append(("user", asked))
@@ -644,8 +679,13 @@ def _me(user: dict) -> None:
             store.update_user(user["username"], postcode=postcode.strip(),
                               blood_type=None if blood_type == NOT_KNOWN else blood_type)
             st.rerun()
-    st.markdown(f'<div class="bs-card"><div class="units">Lab code <b>{user.get("lab_code", "")}</b><br>'
-                f'Patient of {store.LAB_NAME}</div></div>', unsafe_allow_html=True)
+    st.divider()
+    if not user.get("lab_code"):
+        _link_lab_code(user, "me")
+    else:
+        st.markdown(f'<div class="bs-card" style="padding:16px 20px">'
+                    f'<div class="units">Lab code <b>{user["lab_code"]}</b><br>'
+                    f'Donor registered with {store.LAB_NAME}</div></div>', unsafe_allow_html=True)
 
 
 # -------------------------------------------------------------------------------- router

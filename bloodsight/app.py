@@ -9,7 +9,7 @@ import streamlit as st
 import login
 import ui
 
-st.set_page_config(page_title="BloodSight AI", page_icon="🩸", layout="wide")
+st.set_page_config(page_title="BloodSight AI", page_icon="🩸", layout="wide", initial_sidebar_state="collapsed")
 ui.css()
 
 user = login.require_login()

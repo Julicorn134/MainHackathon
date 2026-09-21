@@ -8,6 +8,7 @@ import data_store
 import forecast_data
 import forecast
 import store
+import storage_config
 import ui
 
 
@@ -140,6 +141,18 @@ def render(user):
         st.error("Only staff can deposit data.")
         return
     ui.header("Data", "Save, review and reuse your team's test records.")
+    config = storage_config.settings()
+    if config["backend"] == "supabase":
+        st.caption("Storage destination: Supabase · " + config["url"])
+        if st.button("Check database connection"):
+            try:
+                import supabase_store
+                supabase_store.check_connection()
+                st.success("Connected. BloodSight's tables are ready to receive uploads.")
+            except storage_config.StorageUnavailable as exc:
+                st.error(str(exc))
+    else:
+        st.caption("Storage destination: local test database on this app server.")
     if fresh["role"] == "centre":
         _history(fresh)
     else:

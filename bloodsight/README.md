@@ -12,7 +12,9 @@ python -m venv .venv
 .venv\Scripts\python -m streamlit run app.py
 ```
 
-The existing demo store creates an ignored `state.json`; deposited data is saved transactionally in `state.sqlite3`. Set `BLOODSIGHT_STATE` and optionally `BLOODSIGHT_DB` before starting to isolate a demonstration. The default database sits beside the JSON state file. Use a persistent disk for hosted deployments. `python forecast.py 2026-09-21` only regenerates the bundled synthetic CSV; it does not replace your database records.
+The existing demo account/booking store creates an ignored `state.json`. Uploaded records can be shared in **Supabase**: copy `.streamlit/secrets.example.toml` to `.streamlit/secrets.toml` and fill in `SUPABASE_SECRET_KEY`. The project URL is included. See [the database setup and tables](../supabase/README.md). Cloud failures are reported without substituting local records.
+
+For offline tests, explicitly set `BLOODSIGHT_DATA_BACKEND = "sqlite"`; records then persist in `state.sqlite3`. Set `BLOODSIGHT_STATE` and optionally `BLOODSIGHT_DB` before starting to isolate a demonstration. Keep a persistent disk for the demo account/booking state even when uploaded data uses Supabase. `python forecast.py 2026-09-21` only regenerates the bundled synthetic CSV; it does not replace database records.
 
 ## Deposit data and use AI
 
@@ -42,7 +44,8 @@ These are public credentials for synthetic accounts, not production identity man
 | `app.py` | Role-based entry point |
 | `login.py`, `ui.py` | Login and shared presentation |
 | `store.py` | JSON state, fixtures, matching, requests, bookings, notifications, lab reports |
-| `data_store.py`, `views/data.py` | Validated SQLite imports, manual entry, reports and publication |
+| `data_store.py`, `views/data.py` | Validated imports, manual entry, reports and publication |
+| `supabase_store.py`, `storage_config.py`, `../supabase/` | Cloud storage adapter, server settings, applied schema and SQL checks |
 | `ai_service.py`, `ai_config.py`, `views/ai_panel.py` | Role-scoped evidence, real AI requests, local credentials, source display |
 | `forecast_data.py` | Explicit source selection and daily-history quality checks |
 | `forecast.py`, `data.csv` | Synthetic history, ridge regressions, projections and scenarios |

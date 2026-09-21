@@ -5,7 +5,7 @@ This change continues the Streamlit application. It adds data persistence and re
 ## What is implemented
 
 - **Centre Data page:** UTF-8 CSV preview/import, manual daily figures, a sample download, saved-history export, quality report and import provenance. The expected columns are `date,blood_type,donations,demand,inventory,holiday`; optional `place_id` must match the staff organisation. Quantities are nonnegative whole units. Dates are ISO. Files are limited to 5 MB and 20,000 rows.
-- **Persistent storage:** SQLite transactions, parameterised SQL, write serialisation and disk-backed records. Import corrections update date/type keys; unchanged imports are idempotent. A fresh application process reads the same records. Database files, WAL files and secrets are ignored by Git.
+- **Persistent storage:** Supabase/Postgres cloud tables with transactional imports, or explicitly selected SQLite for offline tests. Import corrections update date/type keys; unchanged imports are idempotent. A fresh application process reads the same records. Database files, WAL files and secrets are ignored by Git. See [the applied schema and cloud setup](../supabase/README.md).
 - **Uploaded-data forecasting:** reads the current centre's history, requires 42 consecutive days per type and never silently fills missing days or substitutes demo data. Training uses imported holiday flags. Unsupported types/series are excluded with a reason. The source's closing-stock date is shown.
 - **Lab Data page:** JSON reports or a single-value manual entry become stored drafts. Validate values and supplied reference ranges, derive their flags, review and explicitly publish. An urgent report requires the phone-call confirmation. New imported lab codes can be used by the existing demo registration flow. Published measurements cannot be silently overwritten by another import.
 - **Patient records:** published deposited reports replace the same patient's bundled history. Drafts stay hidden. Results preference and account lab-code scoping are respected.
@@ -20,6 +20,9 @@ Use Python 3.11+ and the run commands in [the app README](../bloodsight/README.m
 ```toml
 OPENAI_API_KEY = "your-local-key"
 OPENAI_MODEL = "gpt-4.1-mini"
+BLOODSIGHT_DATA_BACKEND = "supabase"
+SUPABASE_URL = "https://xbabvlorkjilnnxrifmy.supabase.co"
+SUPABASE_SECRET_KEY = "your-server-secret-key"
 ```
 
 Environment variables with the same names take precedence. Keep the real key out of Git, chat, screenshots and client-side code. A key is required only for LLM calls: importing data and calculating forecasts work without it. The prototype calls the OpenAI API only when the user submits a question or asks for a value explanation. It has a timeout, bounded input/output and no automatic retry.
@@ -36,7 +39,9 @@ Each AI request shows a notice about sending selected test records to OpenAI. Th
 
 ## Checks performed
 
-`python -m pytest -q`: **36 passed** on the implementation environment. Coverage includes persisted imports, duplicate/replayed corrections, whole-batch rejection/rollback, cross-role/facility reads, quality checks, zero-demand calculations, publication/urgent-report guards, patient record scoping and registration from a deposited code. It also checks the actual OpenAI SDK request/response format against a mock HTTP transport, error-body suppression, source-ID rejection, and Streamlit AppTest rendering for the new pages. An AppTest verifies that a saved stock correction changes the displayed outlook.
+`python -m pytest -q`: **58 passed** on the implementation environment. Coverage includes persisted imports, duplicate/replayed corrections, whole-batch rejection/rollback, cross-role/facility reads, quality checks, zero-demand calculations, publication/urgent-report guards, patient record scoping and registration from a deposited code. It also checks the actual OpenAI SDK request/response format against a mock HTTP transport, error-body suppression, source-ID rejection, and Streamlit AppTest rendering for the new pages. An AppTest verifies that a saved stock correction changes the displayed outlook. Supabase-specific checks cover HTTP pagination, trusted organisation filters, manual form submission, missing keys, connection failures, error redaction and no silent SQLite fallback.
+
+**Live Supabase verification passed:** the applied migration, transaction/permission assertions in `supabase/tests/storage.sql`, importing and rereading 1,440 synthetic records through the app's Data API adapter, duplicate detection, a synthetic lab draft hidden from patients, and four Streamlit screens against the live project. One draft report remains available for review; it has not been published.
 
 `python -m pip check`: no broken requirements. The installed NumPy/pandas combination emits a timedelta deprecation warning in the existing date-range path; tests pass. These are automated backend and headless UI checks, not a clinical evaluation or a full human browser acceptance report.
 
@@ -45,7 +50,7 @@ Each AI request shows a notice about sending selected test records to OpenAI. Th
 ## Remaining boundaries
 
 - Current imports use defined CSV/JSON schemas. Excel, arbitrary column mapping, scanned PDFs, Sheets, ODK, FHIR/HL7 and DHIS2 require connectors. See [the integration roadmap](BLOODSIGHT_INTEGRATIONS.md).
-- This is local persistent storage, not shared cloud hosting. Demo users and existing request/booking state remain in the original JSON store. Production authentication, real organisation onboarding and deployment are separate work.
+- Uploaded history, report values and import provenance are shared in Supabase when configured. Demo users and existing request/booking state remain in the original local JSON store. Production authentication, real organisation onboarding and hosting the app are separate work.
 - Uploaded forecasts do not overlay the old synthetic campaign-response counts. Lot expiry, product-specific stock, transfers, dated appointment yield and clinical eligibility policies remain unimplemented in that baseline.
 - No donor messages are sent externally. No new automated diagnosis, medical eligibility decision, or background AI campaign execution is provided.
 - The original manual acceptance checklist and four-person prompts describe broader work. This change does not mark those requirements complete.

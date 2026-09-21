@@ -17,6 +17,9 @@ def isolated_state(tmp_path, monkeypatch):
     monkeypatch.setattr(ai_config, "SECRETS_PATH", tmp_path / "no-secrets.toml")
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_MODEL", raising=False)
+    monkeypatch.setenv("BLOODSIGHT_DATA_BACKEND", "sqlite")
+    for key in ("SUPABASE_URL", "SUPABASE_SECRET_KEY", "SUPABASE_SERVICE_ROLE_KEY"):
+        monkeypatch.delenv(key, raising=False)
 
 
 @pytest.fixture

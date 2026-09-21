@@ -21,6 +21,14 @@ from pathlib import Path
 import pandas as pd
 
 import store
+import storage_config
+
+
+def _cloud():
+    if storage_config.settings()["backend"] == "supabase":
+        import supabase_store
+        return supabase_store
+    return None
 
 MAX_BYTES = 5 * 1024 * 1024
 MAX_ROWS = 20000
@@ -187,6 +195,8 @@ def _batch(db, kind, owner, rows, filename, username, *, deduplicate=True):
 def import_history(username: str, raw: bytes, filename: str = "manual-entry.csv") -> dict:
     place = _org(_actor(username, "centre"))
     rows = parse_history(raw, place)
+    if cloud := _cloud():
+        return cloud.import_history(place, username, rows, filename)
     with connection() as db:
         db.execute("BEGIN IMMEDIATE")
         current = {(r["date"], r["blood_type"]): dict(r) for r in db.execute(
@@ -206,6 +216,8 @@ def import_history(username: str, raw: bytes, filename: str = "manual-entry.csv"
 
 def history_for(username: str) -> pd.DataFrame:
     place = _org(_actor(username, "centre"))
+    if cloud := _cloud():
+        return cloud.history_for(place)
     with connection() as db:
         df = pd.read_sql_query("SELECT * FROM history WHERE place_id=? ORDER BY blood_type,date", db, params=(place,))
     df["date"] = pd.to_datetime(df["date"])
@@ -218,6 +230,8 @@ def imports_for(username: str) -> list[dict]:
     if not user or user["role"] not in ("centre", "lab"):
         raise ValueError("Import history is available to staff only.")
     kind = "history" if user["role"] == "centre" else "reports"
+    if cloud := _cloud():
+        return cloud.imports_for(_org(user), kind)
     with connection() as db:
         return [dict(r) for r in db.execute("SELECT * FROM imports WHERE kind=? AND owner=? ORDER BY created_at DESC",
                                           (kind, _org(user)))]
@@ -270,6 +284,8 @@ def parse_reports(raw: bytes) -> list[dict]:
 def import_reports(username: str, raw: bytes, filename="reports.json") -> dict:
     org = _org(_actor(username, "lab"))
     rows = parse_reports(raw)
+    if cloud := _cloud():
+        return cloud.import_reports(org, username, rows, filename)
     with connection() as db:
         db.execute("BEGIN IMMEDIATE")
         batch, duplicate = _batch(db, "reports", org, rows, filename, username)
@@ -288,12 +304,16 @@ def import_reports(username: str, raw: bytes, filename="reports.json") -> dict:
 
 def lab_reports(username: str) -> list[dict]:
     org = _org(_actor(username, "lab"))
+    if cloud := _cloud():
+        return cloud.lab_reports(org)
     with connection() as db:
         return [dict(r) for r in db.execute("SELECT id,lab_code,date,urgent,status,phoned_by,published_at FROM reports WHERE org=? ORDER BY date DESC", (org,))]
 
 
 def publish_report(username: str, report_id: str, *, phone_call_recorded: bool = False) -> bool:
     org = _org(_actor(username, "lab"))
+    if cloud := _cloud():
+        return cloud.publish_report(org, username, report_id, phone_call_recorded)
     with connection() as db:
         db.execute("BEGIN IMMEDIATE")
         r = db.execute("SELECT * FROM reports WHERE id=? AND org=?", (report_id, org)).fetchone()
@@ -309,6 +329,8 @@ def publish_report(username: str, report_id: str, *, phone_call_recorded: bool =
 
 
 def known_lab_codes() -> list[str]:
+    if cloud := _cloud():
+        return cloud.known_lab_codes()
     with connection() as db:
         return [r[0] for r in db.execute("SELECT DISTINCT lab_code FROM reports")]
 
@@ -317,6 +339,8 @@ def published_reports_for(username: str) -> list[dict]:
     user = _actor(username, "patient")
     if not user.get("switches", {}).get("results"):
         return []
+    if cloud := _cloud():
+        return cloud.published_reports_for(user.get("lab_code"))
     with connection() as db:
         return [json.loads(r[0]) for r in db.execute(
             "SELECT payload FROM reports WHERE lab_code=? AND status='published' ORDER BY date DESC,id",

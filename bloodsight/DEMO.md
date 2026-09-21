@@ -70,9 +70,6 @@ The page jumps to **Requests** with the form filled in. Read the caption:
 "Filled in from the recommendation: 210 donations in 5 days." Blood type **O-**, target **210**,
 five days of slots.
 
-Optional, and it makes the patient screen much easier to read: in **Times a day**, leave only
-**09:00** selected. Five slots instead of fifteen.
-
 Point at the right column, **Who gets it**:
 
 > **2,791 people match**
@@ -135,7 +132,7 @@ Click **Needs** in the sidebar. The top card is the request you just sent:
 Say: this is the part that usually goes wrong. Not a mass text to everyone. This person, for four
 reasons they can read.
 
-Press **"Book Tue 22 Sep · 09:00"**. The card turns into "Booked: Tue 22 Sep · 09:00 at Regional
+The slots are listed by day. In the row **Tue 22 Sep**, press **09:00**. One click books it. The card turns into "Booked: Tue 22 Sep · 09:00 at Regional
 Blood Centre". Point at **"Not this time"** before you click, and at the line under it: it costs
 nothing and is never shown to the place.
 
@@ -143,7 +140,7 @@ nothing and is never shown to the place.
 
 Switch back to tab 1 and click **Notifications**:
 
-> **New booking: Alex Jansen, Tue 22 Sep · 09:00**
+> **New booking: Alex J., Tue 22 Sep · 09:00**
 > O- request REQ-3.
 
 Click **Bookings**. One row is different from the rest:

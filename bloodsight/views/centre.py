@@ -286,27 +286,18 @@ def _request_card(req: dict) -> None:
             else:
                 st.caption(f"Closed: {req.get('closed_reason', 'closed by staff')}.")
             return
-        # Closing is not only a status change: it cancels the slots people booked, so say so before the click.
-        real_booked = sum(1 for b in bk["named"] if b["real"])
-        plural = "s" if real_booked != 1 else ""
-        close_help = ("Closing takes the request off everyone's Needs, cancels the slots booked on it "
-                      "and tells those people their slot is no longer needed.")
-        st.caption(close_help + (f" {real_booked} slot{plural} booked by an app account "
-                                 f"{'are' if real_booked != 1 else 'is'} on this request."
-                                 if real_booked else ""))
-        confirm = True
-        if real_booked:
-            confirm = st.checkbox(f"Also cancel {real_booked} booked slot{plural}", key=f"confirm_close_{req['id']}")
+        # What closing does, before the click: it stops new bookings, it does not undo the ones already made.
+        close_help = "Closing stops new bookings. Booked appointments are kept."
+        st.caption(close_help)
         a1, a2, _ = st.columns([1.2, 1, 2.2])
         if a1.button("Simulate next day", key=f"day_{req['id']}", help="Demo control: moves this request one day "
                      "forward in the simulated response curve.", disabled=req["day"] >= SIM_DAYS):
             store.advance_day(req["id"])
             st.rerun()
-        if a2.button("Close request", key=f"close_{req['id']}", help=close_help, disabled=not confirm):
+        if a2.button("Close request", key=f"close_{req['id']}", help=close_help):
             store.close_request(req["id"])
-            st.session_state["req_flash"] = (
-                f"{req['id']} closed. It disappears from everyone's Needs."
-                + (f" {real_booked} booked slot{plural} cancelled, those people were told." if real_booked else ""))
+            st.session_state["req_flash"] = (f"{req['id']} closed. It disappears from everyone's Needs. "
+                                             "The appointments already booked on it stand.")
             st.rerun()
 
 

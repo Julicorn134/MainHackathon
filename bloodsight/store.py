@@ -478,12 +478,12 @@ def close_request(request_id: str, reason: str = "closed by staff") -> None:
     for r in state["requests"]:
         if r["id"] == request_id:
             r.update(status="closed", closed_reason=reason)
+            # Team rule: closing a campaign keeps booked appointments. The people who booked are told it stands.
             for b in state["bookings"]:
-                if b["request"] == request_id and b["status"] == "booked" and reason != "target reached":
-                    b["status"] = "cancelled"
-                    notify(b["username"], "booking", f"Your slot {slot_label(b['slot'])} is no longer needed",
-                           f"{PLACES[r['place']]['name']} closed this request, so your booking was cancelled. "
-                           "Thank you for offering.", PLACES[r["place"]]["name"], ref=b["id"], state=state)
+                if b["request"] == request_id and b["status"] == "booked":
+                    notify(b["username"], "booking", f"Your slot {slot_label(b['slot'])} still stands",
+                           f"{PLACES[r['place']]['name']} closed this request to new bookings. Your appointment is kept. "
+                           "You can cancel it under Donations.", PLACES[r["place"]]["name"], ref=b["id"], state=state)
     save(state)
 
 
@@ -547,7 +547,8 @@ def request_bookings(request_id: str, sample: int = 6) -> dict:
 
 def expected_donations(place: str, blood_type: str) -> int:
     """Booked donations from open requests: feeds back into the outlook as expected donations."""
-    return sum(request_stats(r["id"])["booked"] for r in requests(place, "sent") if r["blood_type"] == blood_type)
+    return sum(request_stats(r["id"])["booked"] for r in requests(place)
+               if r["blood_type"] == blood_type and r["status"] in ("sent", "closed"))
 
 
 # ---------------------------------------------------------------- patient side

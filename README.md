@@ -12,6 +12,9 @@ The active implementation is on the **`bloodsight` branch**, in [`bloodsight/`](
 2. [Requirements, current gaps and MVP priorities](docs/BLOODSIGHT_REQUIREMENTS.md)
 3. [Four-person ownership and integration plan](docs/BLOODSIGHT_TEAM_PLAN.md)
 4. [Shared implementation contracts](docs/BLOODSIGHT_CONTRACTS.md)
+5. [Saving data and connecting the real AI](docs/DATA_AND_AI.md)
+6. [Services and connectors for different blood banks](docs/BLOODSIGHT_INTEGRATIONS.md)
+7. [Supabase tables, cloud import setup and verification](supabase/README.md)
 
 Give each person their complete prompt:
 
@@ -39,6 +42,6 @@ Use separate clones or worktrees for parallel work. See [application notes and d
 
 ## Current state
 
-Source review through prototype commit `a99d91a` found a forecast/outlook, staff campaigns, demo login, JSON store, lab screens and an expanded donor portal. Forecasts are aggregated rather than separated by facility; expiry, regional stock, booking safeguards and dated appointment supply still need work. Existing acceptance checks are a checklist, not evidence that the application passes them.
+The data/AI implementation adds shared Supabase storage, CSV and manual history entry, draft/published lab-report imports, forecasts trained on saved facility records, and a real OpenAI assistant with source records. It replaces the patient's template answers. The prototype still uses local demo identities and booking state; expiry, regional stock and dated campaign supply remain separate work. See [setup and verified scope](docs/DATA_AND_AI.md).
 
 The PDF records the full vision. The requirements separate that feature list from the narrower four-hour MVP. Live integrations, real outreach and deployment with a healthcare organisation are outside this synthetic demonstration.

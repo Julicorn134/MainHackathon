@@ -10,6 +10,10 @@ the donor side: the blood type of patients who switched the donor part on. The p
 own results, gets a plain explanation of a value, sees why they of all people were asked, and books
 a slot. All data in this repo is synthetic.
 
+The **Data** pages now accept CSV history and JSON lab reports, save them in Supabase when configured,
+and feed the forecast and AI evidence from saved records. See [cloud setup](../supabase/README.md)
+and [data/AI setup](../docs/DATA_AND_AI.md). AI explanations require an OpenRouter or direct OpenAI key and a successful API response.
+
 ## Run it
 
 Windows:
@@ -30,9 +34,9 @@ python3 -m venv .venv
 
 Streamlit opens the app at http://localhost:8501.
 
-Everything that changes while you click (accounts, requests, bookings, notifications, which batch
-was published) is kept in `state.json`. Delete that file to reset the demo: the app writes a fresh
-seeded state on the next page load.
+Demo accounts, requests, bookings, notifications and the bundled batch state are kept in `state.json`.
+Deleting that file resets this local demonstration state on the next load. Imported history and
+reports live separately in Supabase (or explicitly selected SQLite); this does not reset them.
 
 ```
 del state.json          # Windows
@@ -133,10 +137,9 @@ synthetic data, not a production system, and it must not be pointed at real pati
 - **Results.** The newest published report: values outside the range the lab printed come first,
   the rest are folded into an expander. Every value card carries the number, the unit, the lab's own
   range and a flag. Opening a value gives the number large, a chart of that value across this
-  person's own tests with the lab's minimum and maximum, a text marked "Written by the AI", the
+  person's own tests with the lab's minimum and maximum, an optional live AI explanation, the
   source line (report date and line number), and a "Summary for my doctor" download: a plain-text
-  page with the out-of-range values, their ranges and their history. For donors there is an extra
-  note on ferritin. If the donor part is on and something is open nearby, a card at the bottom
+  page with the out-of-range values, their ranges and their history. If the donor part is on and something is open nearby, a card at the bottom
   bridges to Needs.
 - **Needs.** One card per open request this person may see, most urgent first. Each card names the
   place, the blood type, the distance, the urgency and, under "Why you", the reasons this person was
@@ -145,9 +148,10 @@ synthetic data, not a production system, and it must not be pointed at real pati
   switches are off, the page says so and shows nothing.
 - **Donations.** How many donations and at how many places, the slots currently booked, the
   donation history with where each one went, and a per-place switch: whether that place may ask.
-- **Ask.** A chat box with three suggested questions. It answers from this person's own lab results,
-  donations and open requests, names its sources under every answer, and refuses a diagnosis, a
-  cause and any promise that the person can give blood.
+- **Ask.** A question form calls the configured AI provider with this person's permitted results and donor context.
+  Answers show the supplied source records. No key or provider failure produces an availability
+  message. The model is instructed not to diagnose, infer causes or promise donation eligibility;
+  source checks are not a guarantee of medical correctness.
 - **Notifications.** Everything the lab and the places sent, newest first, with a "Mark all as read"
   button. The unread count sits in the sidebar.
 - **Me.** The three consent switches, the pause toggle, the postcode and the blood type, and the lab
@@ -189,11 +193,11 @@ These are enforced in `store.py`, not only written on a screen.
 - **Urgent values wait for the doctor's phone call.** An urgent lab value is held back from the
   batch. The Release button is disabled until the phone call is recorded, and the store raises an
   error if a release is attempted anyway. An app never delivers an urgent value first.
-- **The AI text gives no diagnosis and no cause.** The value explanation says what the value is,
-  what the lab's range is, what this person's own trend did, and that it cannot say why it moved.
-  The assistant refuses a diagnosis, refuses a cause and points to the doctor.
-- **No promise that a person can give blood.** The assistant refuses it, and the need card says the
-  centre does a short health check at the visit and makes the final call.
+- **AI scope.** Instructions limit answers to the supplied evidence and prohibit diagnosis,
+  treatment advice and eligibility decisions. The app validates cited source IDs; model behavior
+  still needs evaluation. This is not a deterministic medical-safety rule in `store.py`.
+- **Donation eligibility.** The need card says the centre does a health check at the visit and
+  makes the final call. AI output cannot establish eligibility.
 
 ## How the forecast works
 

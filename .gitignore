@@ -23,6 +23,7 @@ build/
 cache/
 logs/
 *.log
+supabase/.temp/
 
 # Editors and operating systems
 .vscode/

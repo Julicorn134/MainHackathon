@@ -15,6 +15,7 @@ STATUS = {
 RISK_ORDER = {"Critical": 0, "Medium": 1, "Low": 2}
 
 NAV_ICONS = {
+    "Data": "database",
     "Outlook": "monitoring", "Requests": "campaign", "Bookings": "event_available",
     "Network": "hub", "Hospital orders": "local_shipping", "Notifications": "notifications",
     "Publish results": "task", "Patients": "group", "Blood requests": "bloodtype",

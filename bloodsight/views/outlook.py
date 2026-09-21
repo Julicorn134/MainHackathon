@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 import forecast as fx
+import forecast_data
 import store
 import ui
 
@@ -47,18 +48,13 @@ def _assessment(blood_type: str, title: str, body: str) -> str:
 
 
 @st.cache_data
-def get_data() -> pd.DataFrame:
-    return fx.load_data()
-
-
-@st.cache_data
 def get_summary(df: pd.DataFrame) -> pd.DataFrame:
     return fx.summary_table(df)
 
 
 @st.cache_data
 def get_backtest(df: pd.DataFrame) -> dict:
-    return {bt: fx.backtest(df, bt) for bt in fx.BLOOD_TYPES}
+    return {bt: fx.backtest(df, bt) for bt in df.blood_type.unique()}
 
 
 def ui_request_button(bt: str, rec: dict, open_req: dict | None = None) -> None:
@@ -81,7 +77,24 @@ def render(user: dict) -> None:
     centre = user.get("org") or CENTRE
     # The assessment sits directly under the page header. It is filled in once the blood type below is known.
     assessment_slot = st.container()
-    df = get_data()
+    source = st.radio("Forecast data", ["demo", "uploaded"],
+                      format_func=lambda s: "Uploaded data" if s == "uploaded" else "Synthetic demonstration",
+                      horizontal=True, key="forecast_source")
+    df = forecast_data.load(user["username"], source)
+    quality = forecast_data.quality(df)
+    if source == "uploaded":
+        st.caption("Fits the model to your saved daily records. Dates are relative to each type's last recorded day. "
+                   "Future holidays, unit expiry, transfers and campaign bookings are not included in this baseline.")
+    else:
+        st.caption("Using the bundled synthetic demonstration, including its configured holiday assumptions.")
+    if any(not r["ready"] for r in quality):
+        st.warning("Some blood types need more complete history and are excluded from this forecast.")
+        st.dataframe(pd.DataFrame(quality), hide_index=True)
+    df = forecast_data.ready_data(df)
+    if df.empty:
+        st.info("No forecast-ready records. Add at least 42 consecutive daily rows for a blood type under Data, "
+                "or explicitly choose the synthetic demonstration above.")
+        return
     summary = get_summary(df)
     today = df.date.max()
     ranked = summary.assign(o=summary.risk.map(ui.RISK_ORDER)).sort_values(["o", "days_of_supply"])
@@ -89,12 +102,13 @@ def render(user: dict) -> None:
 
     at_risk = summary[summary.risk != "Low"]
     critical = summary[summary.risk == "Critical"].sort_values("days_to_safety")
+    errors = [v for v in get_backtest(df).values() if v is not None]
     shortage = (f"{critical.iloc[0].blood_type} in {int(critical.iloc[0].days_to_safety)} days"
                 if len(critical) else "None")
     metrics = (("Units in stock", f"{summary.inventory.sum():,}"),
                ("Types at risk, 14 days", f"{len(at_risk)} of {len(summary)}"),
                ("Earliest projected shortage", shortage),
-               ("Forecast error, 14-day backtest", f"{np.mean(list(get_backtest(df).values())):.1%}"))
+               ("Forecast error, 14-day backtest", f"{np.mean(errors):.1%}" if errors else "Not defined"))
     st.markdown('<div class="bsx-strip">'
                 + "".join(f'<div><div class="l">{l}</div><div class="v">{v}</div></div>' for l, v in metrics)
                 + "</div>", unsafe_allow_html=True)
@@ -120,20 +134,26 @@ def render(user: dict) -> None:
         column_config={"Days of supply": st.column_config.NumberColumn(format="%.1f")})
 
     # ------------------------------------------------------------- blood type detail
-    bt = st.segmented_control("Blood type", fx.BLOOD_TYPES, default=worst.blood_type) or worst.blood_type
+    st.markdown("")
+    available = list(summary.blood_type)
+    bt = st.segmented_control("Blood type", available, default=worst.blood_type) or worst.blood_type
+    if bt not in available:
+        bt = worst.blood_type
+    today = df[df.blood_type == bt].date.max()
+    st.caption(f"{bt} history through {today:%d %b %Y}. Forecast runs from the following day.")
     safety, warning = fx.thresholds(df, bt)
     base = fx.forecast_type(df, bt)
     rec = fx.recommend(df, bt, base, safety, warning)
     current = int(df[df.blood_type == bt].inventory.iloc[-1])
     # Screen 2 feeds back into screen 1: donations already booked through the requests of this centre.
-    open_req = store.open_request(centre, bt)
-    booked = store.expected_donations(centre, bt)
+    open_req = store.open_request(user["org"], bt)
+    booked = store.expected_donations(user["org"], bt) if source == "demo" else 0
     booked_fc = fx.apply_campaign(base, booked, fx.CAMPAIGN_LEAD_DAYS + 1, 5) if booked else None
 
     if rec["risk"] == "Critical":
         panel = _assessment(
             bt, f"Potential {bt} shortage detected",
-            f"No shortage today: <b>{current:,} units</b> in stock. Projected to fall under the safety threshold "
+            f"Last recorded stock: <b>{current:,} units</b> in stock. Projected to be under the safety threshold "
             f"of <b>{safety:,} units</b> in <b>{rec['days_to_safety']} days</b>, reaching "
             f"<b>{rec['day7_inventory']:,.0f} units</b> a week from now.")
     elif rec["risk"] == "Medium":
@@ -175,7 +195,7 @@ def render(user: dict) -> None:
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=b.date, y=b.high, mode="lines", line=dict(width=0), hoverinfo="skip", showlegend=False))
         fig.add_trace(go.Scatter(x=b.date, y=b.low, mode="lines", line=dict(width=0), fill="tonexty",
-                                 fillcolor="rgba(42,120,214,0.12)", name="80% range", hoverinfo="skip"))
+                                 fillcolor="rgba(42,120,214,0.12)", name="Heuristic range", hoverinfo="skip"))
         fig.add_trace(go.Scatter(x=hist.date, y=hist.inventory, mode="lines", name="Actual inventory",
                                  line=dict(color=ui.BLUE, width=2), hovertemplate="%{y:,.0f} units"))
         fig.add_trace(go.Scatter(x=b.date, y=b.inventory, mode="lines", name="Forecast, no action",
@@ -293,12 +313,14 @@ def render(user: dict) -> None:
                            yaxis=dict(title="Units per day", rangemode="tozero", gridcolor=ui.GRID, zeroline=False),
                            xaxis=dict(showgrid=False, linecolor=ui.AXIS, tickformat="%d %b"))
         st.plotly_chart(flow, use_container_width=True, config={"displayModeBar": False})
+        error = get_backtest(df)[bt]
+        error_label = f"{error:.1%}" if error is not None else "undefined (zero held-out demand)"
         st.markdown(
             f'<div class="bsx-note">Model: one ridge regression per blood type and per flow (usage, donations), '
             f"trained on the last {fx.TRAIN_DAYS} days with day-of-week, trend and public-holiday features. "
             f"Projected inventory = current inventory + predicted donations - predicted usage. Projected stock under "
             f"{fx.SAFETY_DAYS} days of supply is critical, under {fx.WARNING_DAYS} days is medium. 14-day backtest "
-            f'error for {bt}: {get_backtest(df)[bt]:.1%}.</div>', unsafe_allow_html=True)
+            f'error for {bt}: {error_label}.</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="bsx-foot">Decision support for collection planning, not for clinical decisions. '
                 'Synthetic data.</div>', unsafe_allow_html=True)

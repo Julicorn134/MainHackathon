@@ -21,7 +21,7 @@ import streamlit as st
 import store
 import ui
 
-PAGES = ["Publish results", "Patients", "Blood requests", "Notify patients", "Donor link", "Notifications"]
+PAGES = ["Publish results", "Data", "Patients", "Blood requests", "Notify patients", "Donor link", "Notifications"]
 
 SWITCH_LABELS = {"results": "results", "nearby": "nearby", "gave_before": "gave before"}
 
@@ -476,6 +476,9 @@ def render(user: dict) -> None:
     page = ui.sidebar(user, PAGES)
     if page == "Publish results":
         _publish(user, store.batch(), store.patients(), _batch_codes())
+    elif page == "Data":
+        from views import data
+        data.render(user)
     elif page == "Patients":
         _patients(store.patients(), _batch_codes())
     elif page == "Blood requests":

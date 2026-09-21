@@ -259,12 +259,14 @@ def update_user(username: str, **fields) -> dict:
 
 
 def unclaimed_lab_codes() -> list[str]:
+    import data_store
     claimed = {u.get("lab_code") for u in load()["users"].values()}
-    return [c for c in REPORTS if c not in claimed]
+    return sorted((set(REPORTS) | set(data_store.known_lab_codes())) - claimed)
 
 
 def _check_lab_code(state: dict, lab_code: str) -> None:
-    if lab_code not in REPORTS:
+    import data_store
+    if lab_code not in REPORTS and lab_code not in data_store.known_lab_codes():
         raise ValueError("This lab code is not known. It is printed on your lab letter, e.g. BL-4821.")
     if any(u.get("lab_code") == lab_code for u in state["users"].values()):
         raise ValueError("This lab code already has an account.")
@@ -277,7 +279,7 @@ def link_lab_code(username: str, lab_code: str) -> dict:
     _check_lab_code(state, lab_code)
     u = state["users"][username]
     u["lab_code"] = lab_code
-    if not u.get("blood_type") and BATCH_ID in state["lab"]["published_batches"]:
+    if not u.get("blood_type") and lab_code in REPORTS and BATCH_ID in state["lab"]["published_batches"]:
         u["blood_type"] = REPORTS[lab_code][-1]["blood_type"]
     save(state)
     return _public(username, u)
@@ -295,14 +297,14 @@ def register_patient(lab_code: str, username: str, password: str, name: str, pos
     if len(password) < 6:
         raise ValueError("Use a password of at least 6 characters.")
     # Distances are derived from the postcode in a real system; the demo draws stable pseudo-distances.
-    if lab_code and not blood_type and BATCH_ID in state["lab"]["published_batches"]:
+    if not blood_type and lab_code in REPORTS and BATCH_ID in state["lab"]["published_batches"]:
         blood_type = REPORTS[lab_code][-1]["blood_type"]  # unknown: the published lab result fills it in
     rng = np.random.default_rng(int(hashlib.sha256(postcode.strip().encode()).hexdigest()[:8], 16))
     distances = {"rbc": round(float(rng.uniform(1, 9)), 1), "mumc": round(float(rng.uniform(1, 9)), 1),
                  "heerlen": round(float(rng.uniform(18, 30)), 1)}
     state["users"][username] = _patient(password, name.strip() or username, lab_code, blood_type, postcode.strip(),
                                         distances, {"results": True, "nearby": False, "gave_before": False, **switches})
-    if lab_code and switches.get("results", True) and BATCH_ID in state["lab"]["published_batches"]:
+    if lab_code in REPORTS and switches.get("results", True) and BATCH_ID in state["lab"]["published_batches"]:
         rep = next((r for r in REPORTS[lab_code] if r["id"] in BATCH_REPORT_IDS), None)
         if rep:
             flagged = [v for v in rep["values"] if v["flag"] != "In range"]
@@ -681,9 +683,14 @@ def reports_for(username: str) -> list[dict]:
     u = state["users"][username]
     if not u["switches"].get("results"):
         return []
+    import data_store
+    deposited = data_store.published_reports_for(username)
+    if deposited:
+        # Once real deposited test records exist, do not mix in fabricated lab history.
+        return deposited
     published = BATCH_ID in state["lab"]["published_batches"]
     out = [r for r in REPORTS.get(u.get("lab_code"), []) if published or r["id"] not in BATCH_REPORT_IDS]
-    return sorted(out, key=lambda r: r["date"], reverse=True)
+    return sorted([{**r, "source": "Bundled synthetic report"} for r in out], key=lambda r: r["date"], reverse=True)
 
 
 def value_history(username: str, key: str) -> list[dict]:

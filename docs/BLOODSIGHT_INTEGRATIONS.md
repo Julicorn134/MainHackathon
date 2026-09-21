@@ -4,7 +4,7 @@ Recommendation, checked against official documentation on 21 September 2026. Thi
 
 ## Start with two external services
 
-**Supabase** is a practical next step for a shared hosted version: Postgres for validated records, Auth for staff accounts, and private Storage for original imports. Design organisation membership and row-level policies before exposing data. A cloud database does not automatically isolate hospitals. The local implementation currently saves deposits in SQLite and uses the existing demo account store; it does not implement Supabase yet. [Database documentation](https://supabase.com/docs/guides/database/overview), [storage access policies](https://supabase.com/docs/guides/storage/security/access-control).
+**Supabase** now stores validated daily history, reports, measured values and import provenance in the shared project. [Applied schema and setup](../supabase/README.md). The Streamlit server holds the secret key; public clients have no table access. Demo identities and bookings still use the original local store. Supabase Auth, organisation membership policies and private Storage for original files remain future work. A cloud database alone does not establish production hospital isolation. [Database documentation](https://supabase.com/docs/guides/database/overview), [storage access policies](https://supabase.com/docs/guides/storage/security/access-control).
 
 **OpenAI API** provides answers grounded in permitted records, understandable summaries and, later, suggested mappings from unfamiliar column names into the application schema. Structured output constrains the response format; it does not establish medical or numerical correctness. Keep deterministic validation and the forecasting model in Python. The feature branch adds a Responses API connection, with the API key kept on the server and no canned-answer fallback. A live call still requires a configured key. [Structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs).
 
@@ -58,7 +58,7 @@ flowchart LR
 
 1. Finish local save/upload → forecast → grounded AI, using synthetic records. Prove that changing the stored inputs changes the output and that users cannot retrieve other users' records.
 2. Add reusable CSV/Excel mappings and three different synthetic bank schemas. Prove that imports produce equivalent records and that malformed/ambiguous fields stop for review.
-3. Move to Supabase for shared hosting, replacing demo identity and testing cross-organisation isolation, private uploads and migrations. Keep provider credentials server-side.
+3. Extend the implemented Supabase data layer with production identity and test cross-organisation isolation, private uploads and migrations. Keep provider credentials server-side.
 4. Add one source connector: Sheets for an online spreadsheet workflow, or ODK for offline stock collection. Prove replay, corrections, stale reports and failed synchronisation do not corrupt counts.
 5. Add one messaging provider after destination-country selection. Use test numbers/sandboxing first; verify consent, opt-outs, retries and booking outcomes before real outreach.
 6. Implement a hospital/vendor or DHIS2 connector only against its documented interface and representative records. Until then, advertise supported imports and adaptable connectors rather than universal integration.

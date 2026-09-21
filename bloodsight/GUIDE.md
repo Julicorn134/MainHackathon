@@ -135,7 +135,7 @@ synthetic data, not a production system, and it must not be pointed at real pati
 ### Patient
 
 - **Results.** The newest published report: values outside the range the lab printed come first,
-  the rest are folded into an expander. Every value card carries the number, the unit, the lab's own
+  followed by all in-range values in a compact table. Every value row carries the number, the unit, the lab's own
   range and a flag. Opening a value gives the number large, a chart of that value across this
   person's own tests with the lab's minimum and maximum, an optional live AI explanation, the
   source line (report date and line number), and a "Summary for my doctor" download: a plain-text
@@ -148,7 +148,7 @@ synthetic data, not a production system, and it must not be pointed at real pati
   switches are off, the page says so and shows nothing.
 - **Donations.** How many donations and at how many places, the slots currently booked, the
   donation history with where each one went, and a per-place switch: whether that place may ask.
-- **Ask.** A question form calls the configured AI provider with this person's permitted results and donor context.
+- **Ask.** Prepared question buttons retain the normal branch's layout and call the configured AI provider with this person's permitted results and donor context.
   Answers show the supplied source records. No key or provider failure produces an availability
   message. The model is instructed not to diagnose, infer causes or promise donation eligibility;
   source checks are not a guarantee of medical correctness.

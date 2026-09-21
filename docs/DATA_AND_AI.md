@@ -34,7 +34,7 @@ Each AI request shows a notice naming the destination: OpenRouter and its select
 
 ## Demonstrate that answers use deposited data
 
-1. As `centre`, download and import the history sample from Data. Open Outlook with Uploaded data selected.
+1. As `centre`, download and import the history sample from Data. Open Outlook with Saved records selected.
 2. Enter a different closing inventory for the final date/type. Return to Outlook: stock and forecast change without editing a Python file or restarting.
 3. As `lab`, download the report JSON template, change the measured value and import it. Publish the selected draft. Use synthetic lab code `BL-4790` for the existing `patient` account.
 4. As `patient`, open Results: the published imported measurement appears with its uploaded source label. Ask for a summary. Inspect the evidence shown under the generated answer.

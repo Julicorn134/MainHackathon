@@ -104,8 +104,8 @@ def test_router_answer_appears_in_app_without_repeat_request(monkeypatch):
     app.session_state["nav"] = "Ask"
     app.run()
     assert not app.exception and len(calls) == 0
-    next(t for t in app.text_input if t.label == "Ask about these records").set_value("Summarise my report")
-    next(b for b in app.button if b.label == "Ask AI").click().run()
+    assert not app.text_input  # The donor keeps the bloodsight branch's prepared-question design.
+    next(b for b in app.button if b.label == "What does my ferritin mean?").click().run()
     assert not app.exception and len(calls) == 1
     assert any("Generated via OpenRouter" in c.value for c in app.caption)
     app.run()

@@ -14,41 +14,42 @@ import ui
 
 def _saved(result):
     if result["duplicate"]:
-        st.info("This exact batch was already saved. No duplicate records were created.")
+        st.info("Already saved. No duplicates added.")
     else:
-        st.success(f"Saved {result['row_count']} records. They remain available after restarting the app.")
+        st.success(f"Saved {result['row_count']} records.")
 
 
 def _history(user):
     name = user["username"]
-    st.caption(f"Facility: {store.PLACES.get(user['org'], {}).get('name', user['org'])}. "
-               "Record daily donations, demand and closing usable inventory in units. Use synthetic test data for this prototype.")
+    ui.section("Daily inventory")
+    st.caption("Donations, demand and closing stock in units. Forecasts need 42 consecutive days per blood type.")
     sample = forecast.load_data().to_csv(index=False).encode("utf-8")
-    st.download_button("Download sample history CSV", sample, "bloodsight-history.csv", "text/csv")
-    st.caption("The sample is labelled synthetic. Files may contain one or more blood types. "
-               "Forecasts need at least 42 consecutive daily records per type; missing days are not treated as zero.")
-    upload = st.file_uploader("Upload daily history (CSV, up to 5 MB)", type=["csv"], key="history_upload")
-    if upload:
-        try:
-            rows = data_store.preview_history(name, upload.getvalue())
-            st.dataframe(pd.DataFrame(rows).head(50), hide_index=True)
-            st.caption(f"{len(rows)} validated rows. Same date/type replaces the earlier stored row; other dates remain. "
-                       "An unchanged repeat is ignored. Reimporting after a correction applies the uploaded values again.")
-            if st.button("Save history", type="primary"):
-                _saved(data_store.import_history(name, upload.getvalue(), upload.name))
-        except ValueError as exc:
-            st.error(str(exc))
-
-    with st.expander("Enter one day's figures"):
-        with st.form("daily_history"):
-            day = st.date_input("Date", value=store.today())
-            bt = st.selectbox("Blood type", store.BLOOD_TYPES)
+    upload_tab, entry_tab = st.tabs(["Upload CSV", "Daily entry"])
+    with upload_tab:
+        upload = st.file_uploader("Daily history", type=["csv"], key="history_upload",
+                                  help="CSV, up to 5 MB. Corrections replace records with the same date and blood type.")
+        st.download_button("Download sample history CSV", sample, "bloodsight-history.csv", "text/csv")
+        st.caption("Download contains synthetic sample records.")
+        if upload:
+            try:
+                rows = data_store.preview_history(name, upload.getvalue())
+                st.dataframe(pd.DataFrame(rows).head(50), hide_index=True)
+                st.caption(f"{len(rows)} validated rows. Matching dates and blood types will be updated.")
+                if st.button("Save history", type="primary"):
+                    _saved(data_store.import_history(name, upload.getvalue(), upload.name))
+            except ValueError as exc:
+                st.error(str(exc))
+    with entry_tab:
+        with st.form("daily_history", border=False):
+            a, b = st.columns(2)
+            day = a.date_input("Date", value=store.today())
+            bt = b.selectbox("Blood type", store.BLOOD_TYPES)
             a, b, c = st.columns(3)
             donations = a.number_input("Donations received (units)", min_value=0, max_value=10000000, step=1)
             demand = b.number_input("Demand (units)", min_value=0, max_value=10000000, step=1)
             inventory = c.number_input("Closing usable inventory (units)", min_value=0, max_value=10000000, step=1)
             holiday = st.checkbox("Local holiday")
-            submit = st.form_submit_button("Save daily figures")
+            submit = st.form_submit_button("Save daily figures", type="primary")
         if submit:
             row = dict(date=day.isoformat(), blood_type=bt, donations=donations, demand=demand,
                        inventory=inventory, holiday=holiday)
@@ -59,9 +60,9 @@ def _history(user):
                 st.error(str(exc))
 
     history = data_store.history_for(name)
-    st.subheader("Saved history")
+    ui.section("Saved history")
     if history.empty:
-        st.info("No uploaded history yet. Save a CSV or daily figures above, then select Uploaded data in Outlook.")
+        st.info("No uploaded history yet. Save a CSV or daily figures above, then select Saved records in Outlook.")
     else:
         st.dataframe(pd.DataFrame(forecast_data.quality(history)), hide_index=True)
         st.dataframe(history.drop(columns=["import_id"]).tail(100), hide_index=True)
@@ -71,33 +72,36 @@ def _history(user):
 
 def _reports(user):
     name = user["username"]
-    st.caption("Import synthetic lab reports or enter a measured value. Records are saved as drafts. "
-               "Review them before publishing to the matching lab-code account.")
+    ui.section("Lab reports")
+    st.caption("Imports are saved as drafts for review before publication.")
     sample = [{"lab_code": "BL-4790", "date": "2026-09-21", "blood_type": "O-",
                "lab": "Synthetic test laboratory", "urgent": False,
                "values": [{"key": "ferritin", "name": "Ferritin", "unit": "ng/mL",
                            "value": 33, "low": 30, "high": 300}]}]
-    st.download_button("Download report JSON template", json.dumps(sample, indent=2), "lab-reports.json", "application/json")
-    upload = st.file_uploader("Upload lab reports (JSON, up to 5 MB)", type=["json"], key="reports_upload")
-    if upload:
-        try:
-            rows = data_store.parse_reports(upload.getvalue())
-            st.dataframe([{k: r[k] for k in ("lab_code", "date", "blood_type", "lab", "urgent")}
-                          for r in rows], hide_index=True)
-            with st.expander("Review measured values"):
-                st.json(rows)
-            if st.button("Save report drafts", type="primary"):
-                _saved(data_store.import_reports(name, upload.getvalue(), upload.name))
-        except ValueError as exc:
-            st.error(str(exc))
-
-    with st.expander("Enter a report with one measured value"):
-        st.caption("For multiple measured values in one report, use the JSON template. "
-                   "Existing patient/date reports cannot be silently replaced.")
-        with st.form("manual_report"):
-            code = st.text_input("Lab code", value="BL-4790")
-            day = st.date_input("Report date", value=store.today())
-            bt = st.selectbox("Reported blood type", store.BLOOD_TYPES)
+    upload_tab, entry_tab = st.tabs(["Upload JSON", "Manual entry"])
+    with upload_tab:
+        upload = st.file_uploader("Lab reports", type=["json"], key="reports_upload", help="JSON, up to 5 MB.")
+        st.download_button("Download report JSON template", json.dumps(sample, indent=2), "lab-reports.json", "application/json")
+        st.caption("Template contains a synthetic example report.")
+        if upload:
+            try:
+                rows = data_store.parse_reports(upload.getvalue())
+                st.dataframe([{k: r[k] for k in ("lab_code", "date", "blood_type", "lab", "urgent")}
+                              for r in rows], hide_index=True)
+                ui.section("Measured values")
+                st.dataframe([{"Lab code": r["lab_code"], "Date": r["date"], **v}
+                              for r in rows for v in r["values"]], hide_index=True)
+                if st.button("Save report drafts", type="primary"):
+                    _saved(data_store.import_reports(name, upload.getvalue(), upload.name))
+            except ValueError as exc:
+                st.error(str(exc))
+    with entry_tab:
+        st.caption("One measured value per entry. For a full panel, use the JSON template.")
+        with st.form("manual_report", border=False):
+            a, b, c = st.columns(3)
+            code = a.text_input("Lab code", value="BL-4790")
+            day = b.date_input("Report date", value=store.today())
+            bt = c.selectbox("Reported blood type", store.BLOOD_TYPES)
             a, b = st.columns(2)
             key = a.text_input("Test identifier", value="ferritin", help="Lowercase, e.g. ferritin or hb.")
             label = b.text_input("Test name", value="Ferritin")
@@ -107,7 +111,7 @@ def _reports(user):
             low = b.number_input("Lab range: lower", value=30.0)
             high = c.number_input("Lab range: upper", value=300.0)
             urgent = st.checkbox("Flagged urgent by the lab")
-            submit = st.form_submit_button("Save draft report")
+            submit = st.form_submit_button("Save draft report", type="primary")
         if submit:
             report = dict(lab_code=code, date=day.isoformat(), blood_type=bt, lab=store.LAB_NAME,
                           urgent=urgent, values=[dict(key=key, name=label, unit=unit, value=value, low=low, high=high)])
@@ -116,7 +120,7 @@ def _reports(user):
             except ValueError as exc:
                 st.error(str(exc))
 
-    st.subheader("Saved reports")
+    ui.section("Saved reports")
     reports = data_store.lab_reports(name)
     if not reports:
         st.info("No reports deposited yet.")
@@ -125,12 +129,12 @@ def _reports(user):
     drafts = [r for r in reports if r["status"] == "draft"]
     if drafts:
         selected = st.selectbox("Draft to publish", [r["id"] for r in drafts],
-                                format_func=lambda rid: next(f"{r['lab_code']} · {r['date']} · {rid}" for r in drafts if r["id"] == rid))
+                                format_func=lambda rid: next(f"{r['lab_code']} · {r['date']}" for r in drafts if r["id"] == rid))
         phoned = st.checkbox("The doctor has phoned (required for urgent reports)", key=f"called_{selected}")
         if st.button("Publish selected report"):
             try:
                 data_store.publish_report(name, selected, phone_call_recorded=phoned)
-                st.success("Published. It is now available in the matching patient's Results and AI context.")
+                st.success("Report published.")
             except ValueError as exc:
                 st.error(str(exc))
 
@@ -140,24 +144,24 @@ def render(user):
     if not fresh or fresh["role"] not in ("centre", "lab"):
         st.error("Only staff can deposit data.")
         return
-    ui.header("Data", "Save, review and reuse your team's test records.")
+    ui.header("Data", "Imports and saved records")
     config = storage_config.settings()
     if config["backend"] == "supabase":
-        st.caption("Storage destination: Supabase · " + config["url"])
+        st.caption("Shared database · Supabase")
         if st.button("Check database connection"):
             try:
                 import supabase_store
                 supabase_store.check_connection()
-                st.success("Connected. BloodSight's tables are ready to receive uploads.")
+                st.success("Database connected.")
             except storage_config.StorageUnavailable as exc:
                 st.error(str(exc))
     else:
-        st.caption("Storage destination: local test database on this app server.")
+        st.caption("Local test database")
     if fresh["role"] == "centre":
         _history(fresh)
     else:
         _reports(fresh)
-    with st.expander("Import history"):
-        logs = data_store.imports_for(fresh["username"])
-        st.dataframe([{k: r[k] for k in ("filename", "row_count", "created_at", "created_by")}
-                      for r in logs], hide_index=True) if logs else st.caption("No imports yet.")
+    ui.section("Import history")
+    logs = data_store.imports_for(fresh["username"])
+    st.dataframe([{k: r[k] for k in ("filename", "row_count", "created_at", "created_by")}
+                  for r in logs], hide_index=True) if logs else st.caption("No imports yet.")

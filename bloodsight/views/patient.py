@@ -46,9 +46,14 @@ div[class*="st-key-book_"] button p{font-size:13px !important}
 div[class*="st-key-decline_"] button,div[class*="st-key-quiet_"] button{border:0 !important;background:transparent !important;color:#6b7280 !important;box-shadow:none !important;padding:0 !important;height:32px !important;min-height:32px !important;justify-content:flex-start !important}
 div[class*="st-key-decline_"] button:hover,div[class*="st-key-quiet_"] button:hover{color:#c8102e !important;text-decoration:underline}
 div[class*="st-key-decline_"] button p,div[class*="st-key-quiet_"] button p{font-size:13px !important}
-div[class*="st-key-sug_"] button p{font-size:13px !important}
+div[class*="st-key-sug_"] button{max-width:100% !important;height:auto !important;min-height:36px !important;white-space:normal !important;padding:8px 14px !important}
+div[class*="st-key-sug_"] button p{font-size:13px !important;white-space:normal !important;line-height:1.35 !important}
 </style>"""
 URGENCY_RISK = {"Shortage forecast": "Critical", "This week": "Medium", "This month": "Low"}
+
+SUGGESTIONS = ["Why is my ferritin low?", "What does my ferritin mean?", "What is my haemoglobin?",
+               "Can I give blood?", "Where did my blood go?", "What needs my blood near me?",
+               "Do I need a doctor?"]
 
 VISIT_TEXT = ("Bring an ID. Eat and drink before you come. The centre does a short health check first "
               "and makes the final call.")
@@ -251,7 +256,7 @@ def _value_page(user: dict, report: dict, key: str) -> None:
     with left:
         _trend_chart(hist, v)
     with right:
-        st.markdown("##### BloodSight AI explanation")
+        _h("About this value")
         from views.ai_panel import explain_value
         explain_value(user, report, v)
     st.caption(f"Source: report of {_short(report['date'])}, line {v['line']}")
@@ -534,7 +539,7 @@ def render(user: dict) -> None:
         _donations(user)
     elif page == "Ask":
         from views.ai_panel import chat
-        chat(user)
+        chat(user, suggestions=SUGGESTIONS)
     elif page == "Notifications":
         ui.notification_list(user["username"], "Nothing yet. The lab and the places write here.")
     elif page == "SMS test":

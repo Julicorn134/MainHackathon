@@ -1,5 +1,7 @@
 """Shared look: colors, status marks, CSS, page header, sidebar navigation."""
 
+from html import escape
+
 import streamlit as st
 
 import store
@@ -16,6 +18,7 @@ RISK_ORDER = {"Critical": 0, "Medium": 1, "Low": 2}
 
 NAV_ICONS = {
     "SMS test": "sms",
+    "Data": "database", "AI assistant": "chat",
     "Outlook": "monitoring", "Requests": "campaign", "Bookings": "event_available",
     "Network": "hub", "Hospital orders": "local_shipping", "Notifications": "notifications",
     "Publish results": "task", "Patients": "group", "Blood requests": "bloodtype",
@@ -28,6 +31,12 @@ def dot(color: str, size: int = 6) -> str:
     """A small round status dot. Never shipped alone: it always sits next to a label."""
     return (f'<span style="display:inline-block;width:{size}px;height:{size}px;border-radius:50%;'
             f'background:{color};margin-right:6px;vertical-align:middle"></span>')
+
+
+def section(title: str) -> None:
+    """The same compact section heading used by the bloodsight branch's role screens."""
+    st.markdown(f'<div style="font-size:15px;font-weight:600;color:#111827;margin:24px 0 8px">'
+                f'{escape(title)}</div>', unsafe_allow_html=True)
 
 
 LOGO = ('<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">'

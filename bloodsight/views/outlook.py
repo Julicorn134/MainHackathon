@@ -77,16 +77,14 @@ def render(user: dict) -> None:
     centre = user.get("org") or CENTRE
     # The assessment sits directly under the page header. It is filled in once the blood type below is known.
     assessment_slot = st.container()
-    source = st.radio("Forecast data", ["uploaded", "demo"],
-                      format_func=lambda s: "Uploaded data" if s == "uploaded" else "Synthetic demonstration",
-                      horizontal=True, key="forecast_source")
+    source_column, record_column = st.columns([1, 2], vertical_alignment="bottom")
+    source = source_column.selectbox("Forecast data", ["uploaded", "demo"],
+                                    format_func=lambda s: "Saved records" if s == "uploaded" else "Synthetic sample",
+                                    key="forecast_source", label_visibility="collapsed")
     df = forecast_data.load(user["username"], source)
     quality = forecast_data.quality(df)
-    if source == "uploaded":
-        st.caption("Fits the model to your saved daily records. Dates are relative to each type's last recorded day. "
-                   "Future holidays, unit expiry, transfers and campaign bookings are not included in this baseline.")
-    else:
-        st.caption("Using the bundled synthetic demonstration, including its configured holiday assumptions.")
+    if not df.empty:
+        record_column.caption(f"History through {df.date.max():%d %b %Y} · {df.blood_type.nunique()} blood types")
     if any(not r["ready"] for r in quality):
         st.warning("Some blood types need more complete history and are excluded from this forecast.")
         st.dataframe(pd.DataFrame(quality), hide_index=True)
@@ -140,7 +138,7 @@ def render(user: dict) -> None:
     if bt not in available:
         bt = worst.blood_type
     today = df[df.blood_type == bt].date.max()
-    st.caption(f"{bt} history through {today:%d %b %Y}. Forecast runs from the following day.")
+    st.caption(f"{bt} · last recorded {today:%d %b %Y}")
     safety, warning = fx.thresholds(df, bt)
     base = fx.forecast_type(df, bt)
     rec = fx.recommend(df, bt, base, safety, warning)
@@ -322,5 +320,7 @@ def render(user: dict) -> None:
             f"{fx.SAFETY_DAYS} days of supply is critical, under {fx.WARNING_DAYS} days is medium. 14-day backtest "
             f'error for {bt}: {error_label}.</div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="bsx-foot">Decision support for collection planning, not for clinical decisions. '
-                'Synthetic data.</div>', unsafe_allow_html=True)
+    assumptions = ("Saved-record baseline. Future holidays, expiry, transfers and campaign bookings are excluded."
+                   if source == "uploaded" else "Synthetic sample with configured holiday assumptions.")
+    st.markdown(f'<div class="bsx-foot">{assumptions} Decision support for collection planning.</div>',
+                unsafe_allow_html=True)

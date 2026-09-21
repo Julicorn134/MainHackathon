@@ -14,7 +14,8 @@ def render(user):
     flash = st.session_state.pop("sms_flash", None)
     if flash:
         st.success(flash)
-    with st.form("sms_contact"):
+    ui.section("Your phone")
+    with st.form("sms_contact", border=False):
         phone = st.text_input("Your mobile number", value=contact.get("phone", ""),
                               placeholder="Country code followed by your number", max_chars=32)
         consent = st.checkbox("This is my number and I agree to receive test SMS messages.",
@@ -34,7 +35,7 @@ def render(user):
         st.info(str(exc))
         return
     trial = config["mode"] == "trial_template"
-    st.markdown("##### Message")
+    ui.section("Message")
     if trial:
         st.write("Twilio's predefined account-alert test message.")
         st.caption("Trial mode: verify your number in Twilio first. Twilio controls the wording. "
@@ -64,7 +65,7 @@ def render(user):
     history = sms.history_for(username)
     if not history:
         return
-    st.markdown("##### Recent tests")
+    ui.section("Recent tests")
     latest = history[0]
     st.write(sms.status_text(latest))
     if latest.get("provider_sid") and st.button("Check delivery"):

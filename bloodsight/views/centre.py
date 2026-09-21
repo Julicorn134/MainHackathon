@@ -585,10 +585,10 @@ def render(user: dict) -> None:
         data.render(user)
     elif page == "AI assistant":
         from views import ai_panel
-        ui.header("AI assistant", "Ask questions about the records behind your forecast.")
-        source = st.radio("Records to analyse", ["uploaded", "demo"],
-                          format_func=lambda s: "Uploaded data" if s == "uploaded" else "Synthetic demonstration",
-                          key="staff_ai_source")
+        ui.header("AI assistant", "Inventory and forecast questions")
+        source = st.selectbox("Records", ["uploaded", "demo"],
+                             format_func=lambda s: "Saved records" if s == "uploaded" else "Synthetic sample",
+                             key="staff_ai_source")
         ai_panel.chat(user, source=source)
     elif page == "Requests":
         _requests_page(user, flash)

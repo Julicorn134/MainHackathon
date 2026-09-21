@@ -19,12 +19,16 @@ For offline tests, explicitly set `BLOODSIGHT_DATA_BACKEND = "sqlite"`; records 
 ## Deposit data and use AI
 
 1. Log in as **centre**, open **Data**, and upload the downloadable history CSV or enter daily figures. Preview validates the full file before saving. Corrections replace the same date/type; unchanged repeats do not duplicate rows.
-2. Open **Outlook → Uploaded data**. Forecasts fit the saved records; each blood type needs 42 consecutive daily rows. Incomplete history is shown explicitly. The bundled demo requires an explicit selection.
+2. Open **Outlook → Saved records**. Forecasts fit the saved records; each blood type needs 42 consecutive daily rows. Incomplete history is shown explicitly. The bundled demo requires an explicit selection.
 3. Log in as **lab**, open **Data**, and upload the JSON report template or enter a measured value. Review drafts and publish them. Urgent reports require a recorded phone call. Once published, imported reports replace the matching patient's bundled lab-history view; they are not mixed with invented measurements.
 4. Copy `.streamlit/secrets.example.toml` to `.streamlit/secrets.toml`, choose `AI_PROVIDER = "openrouter"`, and set `OPENROUTER_API_KEY`. The default model is `openai/gpt-4.1-mini`; change `OPENROUTER_MODEL` for another compatible model. Direct OpenAI remains available with `AI_PROVIDER = "openai"` and `OPENAI_API_KEY`. This local file is ignored by Git; environment variables override these settings. Do not paste keys into source files.
 5. Use **centre → AI assistant**, **patient → Ask**, or **Results → Open value → Explain this recorded value**. Each request calls the selected AI service with the relevant allowed records and displays its source evidence and provider. No key or an API failure produces a clear message, never a template answer.
 
 Only test data belongs in this demo. [Full setup, limits and verification](../docs/DATA_AND_AI.md). [Recommended future integrations](../docs/BLOODSIGHT_INTEGRATIONS.md).
+
+The interface follows the `bloodsight` branch's design: shared styling, sidebar, login,
+compact report tables and prepared donor questions. The prepared questions call the
+real AI service; imports and forecasts continue to use the configured database.
 
 ## Send a test SMS
 

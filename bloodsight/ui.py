@@ -21,6 +21,10 @@ def dot(color: str, size: int = 8) -> str:
             f'background:{color};margin-right:6px;vertical-align:middle"></span>')
 
 
+LOGO = ('<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">'
+        '<path fill="#c8102e" d="M12 2.2c3.4 4.3 6.6 8 6.6 11.9a6.6 6.6 0 1 1-13.2 0C5.4 10.2 8.6 6.5 12 2.2z"/></svg>')
+
+
 def css() -> None:
     # One stylesheet for the whole app: Inter everywhere, thin borders, 8px radii, readable tables,
     # and a sidebar whose account block sits at the bottom. No CSS comments in the block below:
@@ -91,6 +95,32 @@ def css() -> None:
         margin-top: auto;
     }
     [data-testid="stSidebar"] {border-right: 1px solid #e1e0d9;}
+    [data-testid="stSidebar"] {background: #ffffff; min-width: 252px; max-width: 252px;}
+    [data-testid="stSidebar"] .bs-brand {display: flex; align-items: center; gap: 8px; font-size: 1.05rem; font-weight: 650; color: #0b0b0b; letter-spacing: -0.01em; padding: 2px 4px 0;}
+    [data-testid="stSidebar"] .bs-brand b {color: #c8102e; font-weight: 650; margin-left: 4px;}
+    [data-testid="stSidebar"] .bs-org {font-size: .78rem; color: #6b6963; padding: 4px 4px 14px; border-bottom: 1px solid #ecebe6;}
+    [data-testid="stSidebar"] .bs-navlabel {font-size: .66rem; letter-spacing: .09em; text-transform: uppercase; color: #8a8882; padding: 16px 4px 2px;}
+    [data-testid="stSidebar"] [role="radiogroup"] {gap: 2px;}
+    [data-testid="stSidebar"] [role="radiogroup"] label {width: 100%; padding: 8px 10px; border-radius: 8px; cursor: pointer; margin: 0;}
+    [data-testid="stSidebar"] [data-testid="stRadioOption"] > div > div:first-child:not([data-testid="stMarkdownContainer"]) {display: none !important;}
+    [data-testid="stSidebar"] [role="radiogroup"] > div {width: 100%;}
+    [data-testid="stSidebar"] [data-testid="stRadioOption"] > div {width: 100%; gap: 0;}
+    [data-testid="stSidebar"] [data-testid="stRadioOption"][data-selected="true"] {background: #fdecef;}
+    [data-testid="stSidebar"] [data-testid="stRadioOption"][data-selected="true"] p {color: #a50d26; font-weight: 600;}
+    [data-testid="stSidebar"] [role="radiogroup"] {width: 100%;}
+    [data-testid="stSidebar"] [data-testid="stRadio"], [data-testid="stSidebar"] [data-testid="stRadio"] > div {width: 100%;}
+    [data-testid="stSidebar"] [role="radiogroup"] label {display: flex !important; box-sizing: border-box;}
+    [data-testid="stSidebar"] [role="radiogroup"] label > div:last-child {padding-left: 0; margin-left: 0;}
+    [data-testid="stSidebar"] [role="radiogroup"] label p {font-size: .9rem; color: #3d3c38;}
+    [data-testid="stSidebar"] [role="radiogroup"] label:hover {background: #f4f3ef;}
+    [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {background: #fdecef;}
+    [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) p {color: #a50d26; font-weight: 600;}
+    [data-testid="stSidebar"] .bs-account {display: flex; align-items: center; gap: 10px; padding: 14px 4px 6px; border-top: 1px solid #ecebe6;}
+    [data-testid="stSidebar"] .bs-avatar {width: 32px; height: 32px; border-radius: 50%; background: #1f2937; color: #fff; font-size: .72rem; font-weight: 600; display: flex; align-items: center; justify-content: center;}
+    [data-testid="stSidebar"] .bs-acc-name {font-size: .86rem; font-weight: 600; color: #0b0b0b; line-height: 1.2;}
+    [data-testid="stSidebar"] .bs-acc-sub {font-size: .72rem; color: #6b6963;}
+    [data-testid="stSidebar"] .st-key-logout button {background: transparent; border: 1px solid #e1e0d9; color: #3d3c38; font-size: .82rem; min-height: 34px;}
+    [data-testid="stSidebar"] .st-key-logout button:hover {border-color: #c8102e; color: #a50d26;}
     </style>
     """, unsafe_allow_html=True)
 
@@ -105,8 +135,9 @@ def chip(risk: str, label: str | None = None) -> str:
 def sidebar(user: dict, pages: list[str]) -> str:
     """Sidebar navigation for a role. Returns the selected page. To jump: set st.session_state["_goto"], then st.rerun()."""
     with st.sidebar:
-        st.markdown("### BloodSight AI")
-        st.caption(f"{user.get('title') or 'Donor of ' + store.LAB_NAME}")
+        st.markdown(f'<div class="bs-brand">{LOGO}<span>BloodSight<b>AI</b></span></div>'
+                    f'<div class="bs-org">{user.get("title") or "Donor of " + store.LAB_NAME}</div>'
+                    '<div class="bs-navlabel">Workspace</div>', unsafe_allow_html=True)
         # Page jumps: a view sets st.session_state["_goto"] = "<page>" and calls st.rerun(). Writing "nav"
         # directly after this radio exists raises StreamlitAPIException, so the jump is applied here, before it.
         goto = st.session_state.pop("_goto", None)
@@ -115,13 +146,14 @@ def sidebar(user: dict, pages: list[str]) -> str:
         if st.session_state.get("nav") not in pages:
             st.session_state["nav"] = pages[0]
         page = st.radio("Go to", pages, key="nav", label_visibility="collapsed")
-        # The account block is the last child of the sidebar, so the CSS above pushes it to the bottom.
+        # The account block is the last child of the sidebar, so the CSS pushes it to the bottom.
         with st.container():
-            st.divider()
             unread = store.unread_count(user["username"])
-            st.markdown(f"**{user['name']}**")
-            st.caption(f"{unread} unread notification{'s' if unread != 1 else ''}" if unread
-                       else "No unread notifications")
+            initials = "".join(w[0] for w in user["name"].replace("Dr. ", "").split()[:2]).upper()
+            note = f"{unread} unread" if unread else "No unread notifications"
+            st.markdown(f'<div class="bs-account"><div class="bs-avatar">{initials}</div>'
+                        f'<div><div class="bs-acc-name">{user["name"]}</div>'
+                        f'<div class="bs-acc-sub">{note}</div></div></div>', unsafe_allow_html=True)
             if st.button("Log out", key="logout", use_container_width=True):
                 for k in list(st.session_state.keys()):
                     del st.session_state[k]

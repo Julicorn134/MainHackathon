@@ -11,16 +11,15 @@ import ui
 
 CENTRE = "rbc"          # fallback only: the signed-in account's own centre is used when it has one
 
-# A calm clinical panel. No alarm colours: the assessment is read by staff, not shouted at them.
-_PANEL = ('border:1px solid #e1e0d9;border-left:4px solid {rule};border-radius:10px;background:#fff;'
+# A quiet status block. One uniform border, no accent rule and no label: staff read it, it does not announce itself.
+_PANEL = ('border:1px solid #e1e0d9;border-radius:8px;background:#fff;'
           'padding:16px 20px;margin:2px 0 14px;')
-_LABEL = ('display:block;font-size:.72rem;letter-spacing:.09em;text-transform:uppercase;'
-          'color:#898781;font-weight:700;margin-bottom:6px;')
+_META = 'display:block;font-size:.85rem;color:#898781;margin-bottom:4px;'
 
 
-def _assessment(rule: str, title: str, body: str) -> str:
-    return (f'<div style="{_PANEL.format(rule=rule)}">'
-            f'<span style="{_LABEL}">BloodSight AI assessment</span>'
+def _assessment(blood_type: str, title: str, body: str) -> str:
+    return (f'<div style="{_PANEL}">'
+            f'<span style="{_META}">Supply status · {blood_type}</span>'
             f'<div style="font-size:1.12rem;font-weight:700;color:#0b0b0b;margin-bottom:4px">{title}</div>'
             f'<p style="margin:0;color:#52514e">{body}</p></div>')
 
@@ -88,7 +87,8 @@ def render(user: dict) -> None:
                      f'{ui.chip(r.risk)}<div class="sub">{note}</div></div>')
     st.markdown(f'<div class="bs-grid">{"".join(cards)}</div>', unsafe_allow_html=True)
 
-    with st.expander("Table view", expanded=True):
+    st.markdown("#### Table view")
+    with st.container(border=True):
         st.dataframe(
             summary.assign(risk=summary.risk.map(lambda r: f"{ui.STATUS[r]['icon']} {r}")).rename(columns={
                 "blood_type": "Blood type", "inventory": "Inventory", "days_of_supply": "Days of supply",
@@ -111,19 +111,19 @@ def render(user: dict) -> None:
 
     if rec["risk"] == "Critical":
         panel = _assessment(
-            "#1e4f8f", f"Potential {bt} shortage detected",
+            bt, f"Potential {bt} shortage detected",
             f"No shortage today: <b>{current:,} units</b> in stock. Projected to fall under the safety threshold "
             f"of <b>{safety:,} units</b> in <b>{rec['days_to_safety']} days</b>, reaching "
             f"<b>{rec['day7_inventory']:,.0f} units</b> a week from now.")
     elif rec["risk"] == "Medium":
         panel = _assessment(
-            "#5b7fa6", f"{bt} supply tightening",
+            bt, f"{bt} supply tightening",
             f"<b>{current:,} units</b> in stock. Projected to dip under the warning level of "
             f"<b>{warning:,} units</b> in <b>{rec['days_to_warning']} days</b>, while staying above the safety "
             f"threshold of <b>{safety:,} units</b>.")
     else:
         panel = _assessment(
-            "#9aa5ae", f"{bt} supply stable",
+            bt, f"{bt} supply stable",
             f"<b>{current:,} units</b> in stock. Projected to stay above the warning level of "
             f"<b>{warning:,} units</b> for the next 14 days, with the safety threshold at "
             f"<b>{safety:,} units</b>.")
@@ -259,7 +259,9 @@ def render(user: dict) -> None:
         for d in rec["drivers"]:
             st.markdown(f"- {d}")
 
-    with forecast_slot, st.expander("Behind the forecast: daily usage and donations", expanded=True):
+    with forecast_slot:
+        st.markdown("#### Behind the forecast: daily usage and donations")
+    with forecast_slot, st.container(border=True):
         h = df[df.blood_type == bt].tail(30)
         flow = go.Figure()
         for col, name, color in (("demand", "Usage", "#eb6834"), ("donations", "Donations", ui.BLUE)):

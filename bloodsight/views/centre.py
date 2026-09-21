@@ -255,7 +255,6 @@ def _new_request_form(user: dict) -> None:
             else:
                 st.session_state["req_flash"] = f"{req['id']} sent to {req['matched']['total']:,} people."
                 _clear_form()
-                st.session_state["req_form_open"] = False       # the sent card below is the next thing to read
                 st.rerun()
     if b2.button("Save draft", use_container_width=True, key="save_draft"):
         if problem:
@@ -269,7 +268,6 @@ def _new_request_form(user: dict) -> None:
             else:
                 st.session_state["req_flash"] = f"{req['id']} saved as a draft. You can send it later."
                 _clear_form()
-                st.session_state["req_form_open"] = False
                 st.rerun()
     st.caption("The model recommends. A staff member presses send.")
 
@@ -342,9 +340,8 @@ def _requests_page(user: dict, flash: str | None) -> None:
     _grid_css()
     if flash:
         st.success(flash)
-    if st.session_state.get("request_prefill"):
-        st.session_state["req_form_open"] = True        # the outlook handed a recommendation over: open the form
-    with st.expander("New request", expanded=st.session_state.setdefault("req_form_open", True)):
+    st.markdown("#### New request")
+    with st.container(border=True):
         _new_request_form(user)
     st.divider()
     st.markdown("#### This centre's requests")
@@ -522,7 +519,8 @@ def _orders_page(user: dict) -> None:
         st.success(flash)
     items = store.orders(to_place=PLACE)
 
-    with st.expander("Supply constraint notice", expanded=False):
+    st.markdown("#### Supply constraint notice")
+    with st.container(border=True):
         c1, c2 = st.columns([1, 3], gap="large")
         bt = c1.selectbox("Blood type", store.BLOOD_TYPES, key="sc_bt")
         text = c2.text_input("What the hospitals and labs need to know", key="sc_text",

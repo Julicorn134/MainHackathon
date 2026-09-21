@@ -26,6 +26,13 @@ For offline tests, explicitly set `BLOODSIGHT_DATA_BACKEND = "sqlite"`; records 
 
 Only test data belongs in this demo. [Full setup, limits and verification](../docs/DATA_AND_AI.md). [Recommended future integrations](../docs/BLOODSIGHT_INTEGRATIONS.md).
 
+## Send a test SMS
+
+Open **SMS test**, save your own mobile number with consent, then press **Send test SMS**.
+The trial uses Twilio's predefined message; custom mode supports the BloodSight test
+donation message. Delivery history is saved in Supabase, with duplicate protection and
+test limits. See [SMS credentials, trial setup and delivery checks](../docs/SMS_SETUP.md).
+
 ## Demo accounts
 
 | Username | Password | Role |
@@ -47,6 +54,7 @@ These are public credentials for synthetic accounts, not production identity man
 | `data_store.py`, `views/data.py` | Validated imports, manual entry, reports and publication |
 | `supabase_store.py`, `storage_config.py`, `../supabase/` | Cloud storage adapter, server settings, applied schema and SQL checks |
 | `ai_service.py`, `ai_config.py`, `views/ai_panel.py` | Role-scoped evidence, real AI requests, local credentials, source display |
+| `sms_service.py`, `sms_store.py`, `views/sms.py` | Explicit SMS tests, private contact settings and persistent delivery records |
 | `forecast_data.py` | Explicit source selection and daily-history quality checks |
 | `forecast.py`, `data.csv` | Synthetic history, ridge regressions, projections and scenarios |
 | `views/outlook.py` | Forecast dashboard and campaign prefill |

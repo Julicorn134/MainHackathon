@@ -20,6 +20,9 @@ def isolated_state(tmp_path, monkeypatch):
     monkeypatch.setenv("BLOODSIGHT_DATA_BACKEND", "sqlite")
     for key in ("SUPABASE_URL", "SUPABASE_SECRET_KEY", "SUPABASE_SERVICE_ROLE_KEY"):
         monkeypatch.delenv(key, raising=False)
+    for key in ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_MESSAGE_MODE",
+                "TWILIO_FROM_NUMBER", "TWILIO_MESSAGING_SERVICE_SID"):
+        monkeypatch.delenv(key, raising=False)
 
 
 @pytest.fixture

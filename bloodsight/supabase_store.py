@@ -16,6 +16,10 @@ PAGE_SIZE = 500
 HISTORY_COLUMNS = ["place_id", "date", "blood_type", "donations", "demand", "inventory", "holiday", "import_id"]
 
 
+class OperationRejected(ValueError):
+    """A known, safe database validation response."""
+
+
 def _request(method, path, *, params=None, body=None):
     config = cloud_settings()
     headers = {"apikey": config["key"], "Accept": "application/json"}
@@ -43,12 +47,20 @@ def _request(method, path, *, params=None, body=None):
                 raise StorageUnavailable("Report not found for this organisation.")
             if code == "BS003":
                 raise StorageUnavailable("This import is invalid. Check the template and try again; nothing was saved.")
+            if code == "SM001":
+                raise OperationRejected("Save your number and agree to receive test messages first.")
+            if code == "SM002":
+                raise OperationRejected("Test limit reached: wait 60 seconds between attempts, with up to five per day per account/number.")
+            if code == "SM003":
+                raise OperationRejected("Message not found for this account. Prepare a new test.")
             raise StorageUnavailable("Supabase could not complete this operation. Check the connection and database setup.")
         return response.json()
     except httpx.TimeoutException:
         raise StorageUnavailable("Supabase timed out. Refresh saved records before retrying; repeated imports are deduplicated.") from None
-    except (httpx.HTTPError, ValueError) as exc:
-        if isinstance(exc, StorageUnavailable):
+    except httpx.HTTPError:
+        raise StorageUnavailable("Could not reach Supabase. Check the connection and try again.") from None
+    except ValueError as exc:
+        if isinstance(exc, (StorageUnavailable, OperationRejected)):
             raise
         raise StorageUnavailable("Could not read a valid Supabase response. Check the connection and try again.") from None
 

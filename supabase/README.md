@@ -2,6 +2,9 @@
 
 Project: **Bloodsight**, `xbabvlorkjilnnxrifmy` (EU West). Migration `20260921142836_bloodsight_data.sql` is applied to this project.
 
+Migration `20260921152121_bloodsight_sms.sql` is also applied. It adds private SMS
+contacts and delivery attempts, plus server-only RPCs. See [SMS setup](../docs/SMS_SETUP.md).
+
 The Streamlit server imports validated records through the Supabase Data API. The browser never receives the server key. Forecasts and AI evidence read from the selected backend on each request; cloud failures do not switch to local fixtures.
 
 ## Tables
@@ -13,6 +16,8 @@ The Streamlit server imports validated records through the Supabase Data API. Th
 | `bloodsight_history` | `place_id`, `date`, `blood_type`, `donations`, `demand`, `inventory`, `holiday`, `import_id`, `updated_at`: daily units; unique facility/date/type |
 | `bloodsight_reports` | `id`, `org`, `lab_code`, `date`, `blood_type`, `lab`, `urgent`, `status`, `phoned_by`, `published_at`, `import_id`: draft/publication workflow; unique code/date |
 | `bloodsight_report_values` | `report_id`, `key`, `name`, `unit`, `value`, `low`, `high`, `flag`, `line`: measured values with a database-derived range flag |
+| `bloodsight_sms_contacts` | `username`, `phone`, `consent`, `consent_at`, `updated_at`: own test-phone settings |
+| `bloodsight_sms_attempts` | `id`, `username`, `phone`, `body`, `mode`, `status`, `provider_sid`, `error_code`, timestamps: deduplicated send attempts |
 
 Foreign keys connect facilities, imports, reports and values. Constraints reject negative daily units, unknown blood groups, invalid ranges and duplicate report keys. Transactional RPCs save whole batches, serialize concurrent imports for a facility and make unchanged repeat uploads idempotent. Reapplying an earlier history file after a correction restores that file's values and adds an audit record.
 
@@ -38,7 +43,7 @@ All five tables have RLS enabled. `anon` and `authenticated` have no table or RP
 
 The current app still uses local demo identities and booking/request state; **this is not Supabase Auth or production patient authorization**. A server key bypasses RLS, so app scoping remains essential. Use synthetic records only. Production identities, tenancy and organisation onboarding need a separate implementation.
 
-The Supabase Security Advisor reports informational [RLS enabled without policies](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy) findings for these five intentionally server-only tables. Browser grants are revoked; do not add permissive public policies to silence them. No security warnings or errors were returned at verification.
+The Supabase Security Advisor reports informational [RLS enabled without policies](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy) findings for these seven intentionally server-only tables. Browser grants are revoked; do not add permissive public policies to silence them. No security warnings or errors were returned at verification.
 
 ## Reproduce verification
 

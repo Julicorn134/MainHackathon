@@ -21,7 +21,7 @@ import streamlit as st
 import store
 import ui
 
-PAGES = ["Publish results", "Data", "Patients", "Blood requests", "Notify patients", "Donor link", "Notifications"]
+PAGES = ["Publish results", "Data", "Patients", "Blood requests", "Notify patients", "Donor link", "Notifications", "SMS test"]
 
 SWITCH_LABELS = {"results": "results", "nearby": "nearby", "gave_before": "gave before"}
 
@@ -487,6 +487,9 @@ def render(user: dict) -> None:
         _notify(user, store.patients())
     elif page == "Donor link":
         _donor_link(store.patients())
+    elif page == "SMS test":
+        from views import sms
+        sms.render(user)
     else:
         ui.header("Notifications", "Messages for this lab account")
         ui.notification_list(user["username"], empty="No notifications for the lab account yet.")

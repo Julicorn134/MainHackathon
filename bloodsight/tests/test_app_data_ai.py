@@ -35,11 +35,11 @@ def test_uploaded_outlook_changes_after_saved_record(history_csv):
     app.session_state["nav"] = "Outlook"
     app.run()
     assert not app.exception
-    assert app.metric[0].value == "160"
+    assert any('Units in stock</div><div class="v">160</div>' in m.value for m in app.markdown)
     data_store.import_history("centre", b"date,blood_type,donations,demand,inventory,holiday\n2026-03-11,O-,10,12,500,false\n")
     app.run()
     assert not app.exception
-    assert app.metric[0].value == "500"
+    assert any('Units in stock</div><div class="v">500</div>' in m.value for m in app.markdown)
 
 
 def test_sign_up_without_lab_code_then_link_imported_report(report):

@@ -16,7 +16,7 @@ import streamlit as st
 import store
 import ui
 
-PAGES = ["Results", "Needs", "Donations", "Ask", "Notifications", "Me"]
+PAGES = ["Results", "Needs", "Donations", "Ask", "Notifications", "Me", "SMS test"]
 
 SUBTITLE = {
     "Results": "Your lab reports",
@@ -25,6 +25,7 @@ SUBTITLE = {
     "Ask": "Your results, donations and needs",
     "Notifications": "From the lab and the places",
     "Me": "Switches and details",
+    "SMS test": "Send a test message to your own phone.",
 }
 INK, INK_MUTED, BORDER = "#111827", "#6b7280", "#e5e4df"
 OK_GREEN, WARN_AMBER = "#15803d", "#b45309"
@@ -523,7 +524,8 @@ def render(user: dict) -> None:
     if st.session_state.get("_last_page") != page:
         st.session_state["_last_page"] = page
         _close_value()
-    ui.header(page, SUBTITLE[page])
+    if page != "SMS test":
+        ui.header(page, SUBTITLE[page])
     if page == "Results":
         _results(user)
     elif page == "Needs":
@@ -535,5 +537,8 @@ def render(user: dict) -> None:
         chat(user)
     elif page == "Notifications":
         ui.notification_list(user["username"], "Nothing yet. The lab and the places write here.")
+    elif page == "SMS test":
+        from views import sms
+        sms.render(user)
     else:
         _me(user)

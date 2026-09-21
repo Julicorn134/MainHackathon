@@ -4,7 +4,7 @@ Python/Streamlit application using synthetic data. Work from the repository's `b
 
 ## Run
 
-Run from this directory:
+Use Python 3.11 or newer. Run from this directory:
 
 ```powershell
 python -m venv .venv
@@ -12,7 +12,17 @@ python -m venv .venv
 .venv\Scripts\python -m streamlit run app.py
 ```
 
-The store creates an ignored `state.json`. Set `BLOODSIGHT_STATE` to a disposable JSON path before starting the app or tests to isolate a demonstration. Use a new path for a fresh seed. `python forecast.py 2026-09-21` regenerates tracked `data.csv`; this changes fixture and forecast values.
+The existing demo store creates an ignored `state.json`; deposited data is saved transactionally in `state.sqlite3`. Set `BLOODSIGHT_STATE` and optionally `BLOODSIGHT_DB` before starting to isolate a demonstration. The default database sits beside the JSON state file. Use a persistent disk for hosted deployments. `python forecast.py 2026-09-21` only regenerates the bundled synthetic CSV; it does not replace your database records.
+
+## Deposit data and use AI
+
+1. Log in as **centre**, open **Data**, and upload the downloadable history CSV or enter daily figures. Preview validates the full file before saving. Corrections replace the same date/type; unchanged repeats do not duplicate rows.
+2. Open **Outlook → Uploaded data**. Forecasts fit the saved records; each blood type needs 42 consecutive daily rows. Incomplete history is shown explicitly. The bundled demo requires an explicit selection.
+3. Log in as **lab**, open **Data**, and upload the JSON report template or enter a measured value. Review drafts and publish them. Urgent reports require a recorded phone call. Once published, imported reports replace the matching patient's bundled lab-history view; they are not mixed with invented measurements.
+4. Copy `.streamlit/secrets.example.toml` to `.streamlit/secrets.toml` and set `OPENAI_API_KEY`. This local file is ignored by Git. `OPENAI_MODEL` defaults to `gpt-4.1-mini`; environment variables override these settings. Do not paste keys into source files.
+5. Use **centre → AI assistant**, **patient → Ask**, or **Results → Open value → Explain this recorded value**. Each request calls OpenAI with the relevant allowed records and displays its source evidence. No key or an API failure produces a clear message, never a template answer.
+
+Only test data belongs in this demo. [Full setup, limits and verification](../docs/DATA_AND_AI.md). [Recommended future integrations](../docs/BLOODSIGHT_INTEGRATIONS.md).
 
 ## Demo accounts
 
@@ -23,7 +33,7 @@ The store creates an ignored `state.json`. Set `BLOODSIGHT_STATE` to a disposabl
 | patient | patient123 | Alex, O-, donor preferences enabled |
 | patient2 | patient123 | Sam, A+, donor preferences disabled |
 
-These are public credentials for synthetic accounts. `login.py` handles the interface and `store.py` implements account/state operations. Lab is a separate role from centre. The donor view now has Results, Needs, Donations, a rule-based Ask screen, Notifications and Me; it still needs booking-capacity/error handling, contact details and verification against the shared data changes.
+These are public credentials for synthetic accounts, not production identity management. `login.py` handles the interface and `store.py` handles existing account/state operations. Lab is a separate role from centre. Patient Ask and value explanations now use the API. The older donor matching/booking simulation still needs the safeguards identified in the team plan.
 
 ## Files
 
@@ -32,6 +42,9 @@ These are public credentials for synthetic accounts. `login.py` handles the inte
 | `app.py` | Role-based entry point |
 | `login.py`, `ui.py` | Login and shared presentation |
 | `store.py` | JSON state, fixtures, matching, requests, bookings, notifications, lab reports |
+| `data_store.py`, `views/data.py` | Validated SQLite imports, manual entry, reports and publication |
+| `ai_service.py`, `ai_config.py`, `views/ai_panel.py` | Role-scoped evidence, real AI requests, local credentials, source display |
+| `forecast_data.py` | Explicit source selection and daily-history quality checks |
 | `forecast.py`, `data.csv` | Synthetic history, ridge regressions, projections and scenarios |
 | `views/outlook.py` | Forecast dashboard and campaign prefill |
 | `views/centre.py` | Staff requests and bookings |
@@ -41,9 +54,9 @@ These are public credentials for synthetic accounts. `login.py` handles the inte
 
 ## Existing forecast
 
-The generator produces 180 days for eight blood types. Separate ridge regressions predict demand and donations over 14 days using recent history, weekday, trend and configured holidays. Inventory is projected from opening stock plus supply minus demand. Safety/warning thresholds use three/five days of average demand; these are demo assumptions. The plotted band is heuristic, not a calibrated clinical confidence interval.
+The bundled generator produces 180 days for eight blood types. Separate ridge regressions predict demand/donations over 14 days using recent history, weekday, trend and observed holiday flags. Uploaded history is scoped to the centre organisation; no future holiday calendar is assumed for those records. Inventory uses closing stock plus predicted supply minus demand. Safety/warning thresholds use three/five days of average demand: demo assumptions. The plotted band is heuristic, not a calibrated clinical confidence interval.
 
-The existing backtest is a single synthetic holdout and is not real-world validation. Derive quantities and dates from the fixture; the old fixed 210-donation example is not an acceptance requirement.
+The backtest holds out the last 14 days of the selected dataset. This is not real-world validation; errors on synthetic data are synthetic results. The old fixed 210-donation example is not an acceptance requirement.
 
 ## Intended integrated demonstration
 

@@ -111,30 +111,36 @@ def load_data() -> pd.DataFrame:
 
 # ----------------------------------------------------------------------- forecast
 
-def _features(dates: pd.DatetimeIndex, origin: pd.Timestamp) -> np.ndarray:
+def _features(dates: pd.DatetimeIndex, origin: pd.Timestamp, holidays=None) -> np.ndarray:
     dow = np.eye(7)[dates.weekday]
     trend = ((dates - origin).days.to_numpy() / 7.0).reshape(-1, 1)   # in weeks
-    hol = np.array([d.date() in HOLIDAYS for d in dates], dtype=float).reshape(-1, 1)
+    hol = np.array(holidays if holidays is not None else [d.date() in HOLIDAYS for d in dates],
+                   dtype=float).reshape(-1, 1)
     return np.hstack([dow, trend, hol])
 
 
-def _fit_predict(series: pd.Series, future: pd.DatetimeIndex) -> tuple[np.ndarray, float]:
+def _fit_predict(series: pd.Series, future: pd.DatetimeIndex, *, training_holidays=None,
+                 future_holidays=None) -> tuple[np.ndarray, float]:
     """Ridge regression on day-of-week + trend + holiday; returns forecast and residual sd."""
     train = series.iloc[-TRAIN_DAYS:]
     origin = train.index[0]
     model = Ridge(alpha=1.0)
-    x = _features(train.index, origin)
+    x = _features(train.index, origin, training_holidays.reindex(train.index).to_numpy()
+                  if training_holidays is not None else None)
     model.fit(x, train.to_numpy())
     resid_sd = float(np.std(train.to_numpy() - model.predict(x), ddof=1))
-    return np.clip(model.predict(_features(future, origin)), 0, None), resid_sd
+    return np.clip(model.predict(_features(future, origin, future_holidays)), 0, None), resid_sd
 
 
 def forecast_type(df: pd.DataFrame, blood_type: str, horizon: int = HORIZON) -> pd.DataFrame:
     """Projected inventory = current inventory + predicted donations - predicted demand."""
-    s = df[df.blood_type == blood_type].set_index("date")
+    s = df[df.blood_type == blood_type].sort_values("date").set_index("date")
+    if len(s) < 2 or not 1 <= horizon <= 90:
+        raise ValueError("Forecast needs at least two daily rows and a horizon of 1–90 days.")
     future = pd.date_range(s.index[-1] + pd.Timedelta(days=1), periods=horizon)
-    demand, sd_dem = _fit_predict(s.demand, future)
-    donations, sd_don = _fit_predict(s.donations, future)
+    future_holidays = np.zeros(horizon) if df.attrs.get("source") == "uploaded" else None
+    demand, sd_dem = _fit_predict(s.demand, future, training_holidays=s.holiday, future_holidays=future_holidays)
+    donations, sd_don = _fit_predict(s.donations, future, training_holidays=s.holiday, future_holidays=future_holidays)
     inventory = s.inventory.iloc[-1] + np.cumsum(donations - demand)
     # Daily errors accumulate in a running balance: band widens with sqrt(days ahead).
     band = 1.28 * math.hypot(sd_dem, sd_don) * np.sqrt(np.arange(1, horizon + 1))
@@ -185,7 +191,7 @@ def assess(fc: pd.DataFrame, safety: int, warning: int) -> dict:
         "outcome": "Critical" if risk == "Critical" else ("Low" if inv[-1] >= warning else "Medium"),
         "end_inventory": float(inv[-1]),
         "min_inventory": float(inv.min()),
-        "day7_inventory": float(inv[6]),
+        "day7_inventory": float(inv[min(6, len(inv) - 1)]),
         "days_to_safety": int(below_safety[0]) + 1 if below_safety.size else None,
         "days_to_warning": int(below_warning[0]) + 1 if below_warning.size else None,
     }
@@ -197,9 +203,9 @@ def recommend(df: pd.DataFrame, blood_type: str, fc: pd.DataFrame, safety: int, 
     a = assess(fc, safety, warning)
     s = df[df.blood_type == blood_type]
     recent, prior = s.iloc[-14:], s.iloc[-42:-14]
-    demand_change = recent.demand.mean() / prior.demand.mean() - 1
-    donation_change = recent.donations.mean() / prior.donations.mean() - 1
-    upcoming_holidays = [d for d in fc.date if d.date() in HOLIDAYS]
+    demand_change = float(recent.demand.mean() / prior.demand.mean() - 1) if prior.demand.mean() > 0 else 0.0
+    donation_change = float(recent.donations.mean() / prior.donations.mean() - 1) if prior.donations.mean() > 0 else 0.0
+    upcoming_holidays = [] if df.attrs.get("source") == "uploaded" else [d for d in fc.date if d.date() in HOLIDAYS]
 
     # Size the campaign by simulation: smallest launch-today campaign that avoids a shortage
     # and ends the horizon above the warning level; failing that, one that avoids a shortage.
@@ -218,6 +224,8 @@ def recommend(df: pd.DataFrame, blood_type: str, fc: pd.DataFrame, safety: int, 
     launch_within_days = max(breach - CAMPAIGN_LEAD_DAYS, 0) if breach else None
 
     drivers = []
+    if prior.demand.mean() == 0 or prior.donations.mean() == 0:
+        drivers.append("A prior baseline is zero; its percentage change is not defined.")
     if abs(demand_change) >= 0.04:
         drivers.append(f"Usage is {'up' if demand_change > 0 else 'down'} {abs(demand_change):.0%} "
                        "over the last 2 weeks versus the 4 weeks before.")
@@ -225,8 +233,8 @@ def recommend(df: pd.DataFrame, blood_type: str, fc: pd.DataFrame, safety: int, 
         drivers.append(f"Donations are {'up' if donation_change > 0 else 'down'} {abs(donation_change):.0%} "
                        "over the same period.")
     for d in upcoming_holidays:
-        drivers.append(f"Public holiday on {d:%a %d %b}: donor turnout typically drops by about "
-                       f"{1 - HOLIDAY_DONATION_FACTOR:.0%}.")
+        drivers.append(f"Configured demo holiday on {d:%a %d %b}; the synthetic generator assumes "
+                       f"{1 - HOLIDAY_DONATION_FACTOR:.0%} lower turnout.")
     if not drivers:
         drivers.append("Usage and donations are in line with the recent baseline.")
 
@@ -236,23 +244,30 @@ def recommend(df: pd.DataFrame, blood_type: str, fc: pd.DataFrame, safety: int, 
             "drivers": drivers, "demand_change": demand_change, "donation_change": donation_change}
 
 
-def backtest(df: pd.DataFrame, blood_type: str, horizon: int = HORIZON) -> float:
+def backtest(df: pd.DataFrame, blood_type: str, horizon: int = HORIZON) -> float | None:
     """Hold out the last `horizon` days and report total-demand forecast error (%)."""
     s = df[df.blood_type == blood_type].set_index("date")
     train, test = s.iloc[:-horizon], s.iloc[-horizon:]
-    pred, _ = _fit_predict(train.demand, test.index)
-    return float(abs(pred.sum() - test.demand.sum()) / test.demand.sum())
+    if len(train) < 2:
+        return None
+    pred, _ = _fit_predict(train.demand, test.index, training_holidays=train.holiday,
+                           future_holidays=test.holiday.to_numpy())
+    total = test.demand.sum()
+    return float(abs(pred.sum() - total) / total) if total > 0 else (0.0 if pred.sum() == 0 else None)
 
 
 def summary_table(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for bt in BLOOD_TYPES:
+        if bt not in set(df.blood_type):
+            continue
         safety, warning = thresholds(df, bt)
         a = assess(forecast_type(df, bt), safety, warning)
         s = df[df.blood_type == bt]
         rows.append({
             "blood_type": bt, "inventory": int(s.inventory.iloc[-1]),
-            "days_of_supply": s.inventory.iloc[-1] / s.demand.iloc[-14:].mean(),
+            "days_of_supply": float(s.inventory.iloc[-1] / s.demand.iloc[-14:].mean())
+                if s.demand.iloc[-14:].mean() > 0 else float("inf"),
             "projected_min": int(round(a["min_inventory"])), "safety": safety, "warning": warning,
             "risk": a["risk"], "days_to_safety": a["days_to_safety"],
         })

@@ -13,7 +13,7 @@ import streamlit as st
 import store
 import ui
 
-PAGES = ["Outlook", "Requests", "Bookings", "Notifications"]
+PAGES = ["Outlook", "Data", "AI assistant", "Requests", "Bookings", "Notifications"]
 PLACE = "rbc"                                  # this screen belongs to the Regional Blood Centre
 PLACE_NAME = store.PLACES[PLACE]["name"]
 SIM_DAYS = 5                                   # store's simulated response curve runs five days
@@ -256,12 +256,17 @@ def render(user: dict) -> None:
     if page == "Outlook":
         from views import outlook
         ui.header("BloodSight AI", "Blood supply intelligence: see the shortage before it happens.")
-        try:
-            outlook.render(user)
-        except st.errors.StreamlitAPIException:
-            if st.session_state.get("request_prefill") is None:
-                raise                       # a real failure, not the handover above
-            st.rerun()
+        outlook.render(user)
+    elif page == "Data":
+        from views import data
+        data.render(user)
+    elif page == "AI assistant":
+        from views import ai_panel
+        ui.header("AI assistant", "Ask questions about the records behind your forecast.")
+        source = st.radio("Records to analyse", ["uploaded", "demo"],
+                          format_func=lambda s: "Uploaded data" if s == "uploaded" else "Synthetic demonstration",
+                          key="staff_ai_source")
+        ai_panel.chat(user, source=source)
     elif page == "Requests":
         _requests_page(user, flash)
     elif page == "Bookings":

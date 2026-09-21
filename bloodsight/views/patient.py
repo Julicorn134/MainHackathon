@@ -1,8 +1,8 @@
 """Patient side: Results, Needs, Donations, Ask, Notifications, Me.
 
-Everything on these screens is this person's own data. Nothing leaves the patient side except a
-name attached to a booking (store.book). The assistant and the value screen never diagnose and
-never give a cause: both refuse and point to the doctor.
+Screens retrieve this person's records. On an explicit AI request, a limited evidence packet
+is sent to the configured OpenAI service. Centre staff still see names only through bookings.
+The assistant is instructed to explain records without diagnosis or donation eligibility advice.
 """
 
 from __future__ import annotations
@@ -27,43 +27,6 @@ SUBTITLE = {
 }
 URGENCY_RISK = {"Shortage forecast": "Critical", "This week": "Medium", "This month": "Low"}
 
-# What a value is, in plain words. The value screen and the assistant both build their text from
-# these lines plus the person's own numbers: no model runs in this prototype.
-EXPLAINERS = {
-    "ferritin": "Ferritin is the protein that stores iron in the body. A ferritin result says how much iron is "
-                "in store, not how much is in the blood right now.",
-    "ldl": "LDL cholesterol is one of the fats carried in the blood. Labs report it as part of the picture of "
-           "heart and vessel health.",
-    "hb": "Haemoglobin is the part of the red blood cells that carries oxygen around the body.",
-    "tsh": "TSH is a hormone made in the pituitary gland. It tells the thyroid how hard to work, so labs use it "
-           "to look at the thyroid.",
-    "wbc": "White blood cells are the cells the immune system uses. The lab counts how many are in a sample.",
-    "plt": "Platelets are the small blood cells that let blood clot.",
-    "rbc_count": "Red blood cells carry oxygen from the lungs to the rest of the body. This is a count of them.",
-    "mcv": "MCV is the average size of a red blood cell.",
-    "glucose": "Glucose is the sugar in the blood. This one is measured after not eating.",
-    "hba1c": "HbA1c reflects the average blood sugar over the past two to three months.",
-    "hdl": "HDL cholesterol is another of the fats carried in the blood.",
-    "trig": "Triglycerides are a type of fat in the blood, measured after not eating.",
-    "creat": "Creatinine is a waste product from muscle. The kidneys remove it, so labs use it to look at kidneys.",
-    "egfr": "eGFR is an estimate of how fast the kidneys filter the blood, calculated from other values.",
-    "alt": "ALT is an enzyme found mostly in the liver.",
-    "crp": "CRP is a protein that rises when there is inflammation somewhere in the body.",
-    "b12": "Vitamin B12 comes from food. The body needs it for nerves and for making red blood cells.",
-    "vitd": "Vitamin D comes from sunlight and from food.",
-}
-DONOR_NOTES = {
-    "ferritin": "For donors: giving blood lowers iron stores, and ferritin is the value that shows them. "
-                "The donor centre checks this at every visit and makes the final call.",
-}
-# Extra words the assistant accepts for a value, on top of the key and the printed name.
-SYNONYMS = {
-    "ferritin": ["iron"], "hb": ["haemoglobin", "hemoglobin"], "ldl": ["cholesterol"], "glucose": ["sugar"],
-    "wbc": ["white blood"], "plt": ["platelet"], "crp": ["inflammation"], "egfr": ["kidney"], "alt": ["liver"],
-    "tsh": ["thyroid"], "rbc_count": ["red blood cell"], "vitd": ["vitamin d"], "b12": ["vitamin b12"],
-    "trig": ["triglyceride"], "creat": ["creatinine"], "mcv": ["red cell size"],
-}
-SUGGESTIONS = ["Why is my ferritin low?", "Can I give blood?", "Where did my blood go?"]
 VISIT_TEXT = ("Bring an ID. Eat and drink before you come. The centre does a short health check first "
               "and makes the final call.")
 
@@ -110,39 +73,7 @@ def _donor_on(user: dict) -> bool:
     return bool(sw.get("nearby") or sw.get("gave_before"))
 
 
-# ------------------------------------------------------------------ text written by the AI
-
-def _trend_sentence(hist: list[dict]) -> str:
-    """Trend wording computed from the person's own history, oldest first."""
-    if len(hist) < 2:
-        return "This is the first test of this value in the app, so there is no trend to compare with yet."
-    vals = [h["value"] for h in hist]
-    points = ", ".join(f"{_num(h['value'])} on {_short(h['date'])}" for h in hist)
-    if all(b < a for a, b in zip(vals, vals[1:])):
-        move = "It went down at every test"
-    elif all(b > a for a, b in zip(vals, vals[1:])):
-        move = "It went up at every test"
-    elif vals[-1] < vals[0]:
-        move = "It is lower than at the first test"
-    elif vals[-1] > vals[0]:
-        move = "It is higher than at the first test"
-    else:
-        move = "It is the same as at the first test"
-    return f"{move}: {points}."
-
-
-def _ai_text(v: dict, hist: list[dict]) -> str:
-    """The explainer block: what the value is, what the trend did, and what this text will not say."""
-    rng = f"{_num(v['low'])} to {_num(v['high'])} {v['unit']}"
-    if v["flag"] == "Low":
-        flag_line = f"The lab marked this result as low: it is under the range the lab printed ({rng})."
-    elif v["flag"] == "High":
-        flag_line = f"The lab marked this result as high: it is over the range the lab printed ({rng})."
-    else:
-        flag_line = f"This result is inside the range the lab printed ({rng})."
-    return " ".join([EXPLAINERS.get(v["key"], "This is one of the values the lab measured."),
-                     flag_line, _trend_sentence(hist),
-                     "I cannot say why this value moved or what it means for you: that is a question for your doctor."])
+# ------------------------------------------------------------------ report summary
 
 
 def _doctor_summary(user: dict, report: dict) -> str:
@@ -227,7 +158,7 @@ def _trend_chart(hist: list[dict], v: dict) -> None:
 
 
 def _value_page(user: dict, report: dict, key: str) -> None:
-    """One value, opened: the number, the lab's range, the trend, and the AI text."""
+    """One recorded value, its supplied range and an optional live AI explanation."""
     v = next((x for x in report["values"] if x["key"] == key), None)
     if v is None:
         st.session_state.pop("open_value", None)
@@ -248,13 +179,9 @@ def _value_page(user: dict, report: dict, key: str) -> None:
     with left:
         _trend_chart(hist, v)
     with right:
-        st.markdown("##### 🤖 Written by the AI")
-        st.markdown(f'<div class="bs-rec">{_ai_text(v, hist)}</div>', unsafe_allow_html=True)
-        st.caption("In this prototype the text is put together from templates and from your own values. "
-                   "It is not medical advice and it is not a diagnosis.")
-        if key in DONOR_NOTES:
-            st.markdown(f'<div class="bs-card" style="margin-top:8px"><b>For donors</b>'
-                        f'<div class="units">{DONOR_NOTES[key]}</div></div>', unsafe_allow_html=True)
+        st.markdown("##### AI explanation")
+        from views.ai_panel import explain_value
+        explain_value(user, report, v)
     st.caption(f"source: report of {_short(report['date'])}, line {v['line']}")
     st.download_button("Summary for my doctor", _doctor_summary(user, report), type="primary",
                        file_name=f"bloodsight-summary-{report['date']}.txt", mime="text/plain",
@@ -292,7 +219,7 @@ def _results(user: dict) -> None:
     if ok:
         with st.expander(f"{len(ok)} more values, all in range"):
             _value_cards(ok, picked, "in")
-    st.caption(f"Blood type from this test: {picked['blood_type']}")
+    st.caption(f"Blood type from this test: {picked['blood_type']} · Source: {picked.get('source', 'Synthetic demo')}")
 
     # Bridge to the donor side. Only for people who switched the donor part on, and only if something is open.
     needs = store.needs_for(user["username"]) if _donor_on(user) else []
@@ -413,109 +340,6 @@ def _donations(user: dict) -> None:
                 st.rerun()
 
 
-# ------------------------------------------------------------------------------- the ask
-
-def _value_lookup(text: str, report: dict | None) -> dict | None:
-    """Find the value the question is about. Longest word first, so hba1c beats hb."""
-    if not report:
-        return None
-    pairs = []
-    for v in report["values"]:
-        words = {v["key"].replace("_", " "), v["name"].split(" (")[0].lower(), *SYNONYMS.get(v["key"], [])}
-        pairs += [(w, v) for w in words if len(w) > 2]
-    for word, v in sorted(pairs, key=lambda p: -len(p[0])):
-        if word in text:
-            return v
-    return None
-
-
-def _sources(reports: list[dict]) -> str:
-    if not reports:
-        return "sources: you have no published reports yet."
-    return "sources: report" + ("s" if len(reports) > 1 else "") + " of " + ", ".join(
-        _short(r["date"]) for r in sorted(reports, key=lambda r: r["date"]))
-
-
-def _answer(user: dict, question: str) -> str:
-    """Rule-based answers over this person's own data. Three things it always refuses."""
-    q = question.lower()
-    reports = store.reports_for(user["username"])
-    newest = reports[0] if reports else None
-    v = _value_lookup(q, newest)
-    src = _sources(reports)
-
-    diagnosis = any(w in q for w in ["do i have", "have i got", "am i sick", "am i ill", "anaemia", "anemia",
-                                     "diagnos", "what is wrong with me", "is it serious", "is this serious",
-                                     "is it dangerous", "cancer", "disease"])
-    promise = any(w in q for w in ["can i give", "can i donate", "am i allowed", "may i give", "may i donate",
-                                   "am i able to give", "eligible"])
-    cause = any(w in q for w in ["why is", "why are", "why did", "why does", "what causes", "cause of",
-                                 "how come", "what made"])
-
-    if diagnosis:
-        return ("I will not diagnose, and I cannot tell you whether you have a condition. What I can do is put "
-                "your own numbers on one page for your doctor. Want a one-page summary to take to your doctor? "
-                "You can download it on the Results page, under any value.\n\n" + src)
-    if promise:
-        return ("I cannot promise that. The donor centre decides at the visit whether you can give: they do a "
-                "short health check first and make the final call. What I can tell you is what is open near you: "
-                "look under Needs.\n\n" + src)
-    if cause:
-        head = (f"Your {v['name'].lower()} was {_num(v['value'])} {v['unit']} on {_short(newest['date'])}, and the "
-                f"lab printed a range of {_num(v['low'])} to {_num(v['high'])}. " if v else "")
-        return (head + "I cannot tell you the cause. Your doctor can. I only read the numbers in your own "
-                       "reports, and a number never carries its reason with it.\n\n" + src)
-    if v:
-        hist = store.value_history(user["username"], v["key"])
-        return (f"{v['name']}: {_num(v['value'])} {v['unit']} on {_short(newest['date'])}, marked "
-                f"{v['flag'].lower()} against the range the lab printed ({_num(v['low'])} to {_num(v['high'])} "
-                f"{v['unit']}). {EXPLAINERS.get(v['key'], '')} {_trend_sentence(hist)} "
-                f"I cannot say why it moved: that is a question for your doctor.\n\n" + src)
-
-    if any(w in q for w in ["where did", "where does", "my blood go", "went", "used", "donation", "gave"]):
-        d = store.donations(user["username"])
-        if not d["history"]:
-            return "You have no donations on record in this app.\n\nsources: your donations."
-        lines = "\n".join(f"- {_day(h['date'])}, {h['kind']} at {h['place_name']}: {h['used']}" for h in d["history"])
-        return (f"You gave {d['total']} times at {d['places']} places. The last three:\n{lines}"
-                f"\n\nsources: your donations.")
-    if any(w in q for w in ["need", "nearby", "near me", "who wants", "request", "shortage"]):
-        if not _donor_on(user):
-            return ("Your donor switches are off, so nothing is matched to you. You can turn them on under Me."
-                    "\n\nsources: your switches.")
-        needs = [n for n in store.needs_for(user["username"]) if not n["declined"]]
-        if not needs:
-            return "Nothing within reach needs you right now.\n\nsources: open requests near you."
-        lines = "\n".join(f"- {n['place_name']} needs {n['blood_type']}, {_num(n['distance_km'])} km away "
-                          f"({n['urgency'].lower()}). Why you: {', '.join(n['reasons'])}." for n in needs)
-        return f"Open near you:\n{lines}\n\nsources: open requests near you."
-
-    return ("I answer from your own data only: your lab results, your donations, and the requests open near you. "
-            "Try a value by name, 'where did my blood go', or 'what needs my blood'.\n\n" + src)
-
-
-def _ask(user: dict) -> None:
-    st.caption("Knows: your own lab results · your donations · open needs near you")
-    log = st.session_state.setdefault("ask_log", [])
-    for role, text in log:
-        with st.chat_message(role):
-            st.markdown(text)
-
-    st.caption("Try one of these")
-    asked = None
-    for col, s in zip(st.columns(len(SUGGESTIONS)), SUGGESTIONS):
-        if col.button(s, key=f"sug_{s}", use_container_width=True):
-            asked = s
-    typed = st.chat_input("Ask about your own results, donations or needs")
-    st.caption("The assistant in this prototype follows rules and templates, and reads only this person's own "
-               "data. It gives no diagnosis, no cause and no promise that you can give blood.")
-    asked = typed or asked
-    if asked:
-        log.append(("user", asked))
-        log.append(("assistant", _answer(user, asked)))
-        st.rerun()
-
-
 # ------------------------------------------------------------------------------------ me
 
 def _me(user: dict) -> None:
@@ -574,7 +398,8 @@ def render(user: dict) -> None:
     elif page == "Donations":
         _donations(user)
     elif page == "Ask":
-        _ask(user)
+        from views.ai_panel import chat
+        chat(user)
     elif page == "Notifications":
         ui.notification_list(user["username"], "Nothing yet. The lab and the places write here.")
     else:

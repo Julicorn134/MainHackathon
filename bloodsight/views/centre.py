@@ -247,12 +247,21 @@ def _bookings_page() -> None:
 # ------------------------------------------------------------------------------------- render
 
 def render(user: dict) -> None:
+    # The outlook hands a recommendation over by setting "request_prefill" and "nav". The nav radio already
+    # exists by then, so that second write throws; the jump is done here instead, before the radio is built.
+    if st.session_state.get("request_prefill") is not None:
+        st.session_state["nav"] = "Requests"
     page = ui.sidebar(user, PAGES)
     flash = st.session_state.pop("req_flash", None)
     if page == "Outlook":
         from views import outlook
         ui.header("BloodSight AI", "Blood supply intelligence: see the shortage before it happens.")
-        outlook.render(user)
+        try:
+            outlook.render(user)
+        except st.errors.StreamlitAPIException:
+            if st.session_state.get("request_prefill") is None:
+                raise                       # a real failure, not the handover above
+            st.rerun()
     elif page == "Requests":
         _requests_page(user, flash)
     elif page == "Bookings":

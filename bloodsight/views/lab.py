@@ -99,7 +99,8 @@ def _publish(user: dict) -> None:
 
     # ------------------------------------------------------------------------------- held back
     st.markdown("#### Held back")
-    st.caption("These reports do not go out with the batch. Urgent values wait until the doctor has phoned.")
+    st.caption("These reports do not go out with the batch. Urgent values are never delivered by an app first: "
+               "Release opens only after the doctor's phone call is recorded.")
     for h in b["held"]:
         left, right = st.columns([3, 1.5], vertical_alignment="center")
         state = "Released" if h["released"] else "Doctor has phoned" if h["phoned"] else h["note"]
@@ -125,8 +126,6 @@ def _publish(user: dict) -> None:
                     st.error(str(e))
                 else:
                     st.rerun()
-            if not h["phoned"]:
-                right.caption("Release opens after the phone call is recorded.")
         else:
             if right.button("Checked by hand, release", key=f"rel_{h['code']}", use_container_width=True):
                 try:
@@ -261,10 +260,12 @@ def _donor_link() -> None:
     st.markdown("#### Accounts with the donor part on")
     on = [p for p in sorted(store.patients(), key=lambda p: p["name"]) if _donor_on(p)]
     if on:
-        st.dataframe([{"Name": p["name"], "Lab code": p["lab_code"],
-                       "Blood type passed on": p.get("blood_type") or "filled in at publish",
-                       "Switches on": _switch_text(p["switches"])} for p in on],
-                     hide_index=True, use_container_width=True)
+        for p in on:
+            switches = ", ".join(SWITCH_LABELS[k] for k in ("nearby", "gave_before") if p["switches"].get(k))
+            st.markdown(f'<div class="bs-card" style="margin-bottom:8px;max-width:620px"><b>{p["name"]}</b>'
+                        f'<div class="units">Blood type passed on: <b>{p.get("blood_type") or "filled in at publish"}'
+                        f'</b></div><div class="sub">Donor part: {switches}. Nothing else about this person leaves '
+                        f'the lab.</div></div>', unsafe_allow_html=True)
     else:
         st.caption("No account has the donor part on.")
     st.caption("Names stand here because the lab already knows them. Only the blood type leaves the lab, "

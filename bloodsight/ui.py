@@ -56,6 +56,9 @@ def css() -> None:
     @keyframes bsfade {from {opacity: 0; transform: translateY(4px);} to {opacity: 1; transform: none;}}
     [data-stale="true"] {opacity: 0 !important; transition: none !important;}
     [data-testid="stHeader"] {background: transparent;}
+    [data-testid="stChatMessageAvatarUser"], [data-testid="stChatMessageAvatarAssistant"], [data-testid="stChatMessage"] > div:first-child:has(svg) {display: none !important;}
+    [data-testid="stChatMessage"] {background: transparent !important; padding: 6px 0 !important; border-bottom: 1px solid #ecebe6; border-radius: 0 !important;}
+    [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) p {font-weight: 600;}
     [data-testid="stBaseButton-primary"] p, [data-testid="stBaseButton-primary"] span, [data-testid="stBaseButton-primary"] div,
     [data-testid="stBaseButton-primaryFormSubmit"] p, [data-testid="stBaseButton-primaryFormSubmit"] span, [data-testid="stBaseButton-primaryFormSubmit"] div,
     [data-testid="stBaseButton-primaryDownload"] p, [data-testid="stBaseButton-primaryDownload"] span {color: #ffffff !important;}

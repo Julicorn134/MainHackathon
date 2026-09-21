@@ -1,3 +1,5 @@
+> Historical TrialMatch planning document. For the current BloodSight project, use [the requirements](BLOODSIGHT_REQUIREMENTS.md), [team plan](BLOODSIGHT_TEAM_PLAN.md), and [contracts](BLOODSIGHT_CONTRACTS.md).
+
 # TrialMatch: four-person work plan
 
 This plan divides implementation among four human contributors. Replace Person 1-4 with team members' names at kickoff. Each owns a separate branch and file area; Person 4 coordinates integration, while each owner fixes defects in their own component.

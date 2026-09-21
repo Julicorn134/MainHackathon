@@ -1,3 +1,5 @@
+> Historical TrialMatch planning document. For the current BloodSight project, use [the requirements](BLOODSIGHT_REQUIREMENTS.md), [team plan](BLOODSIGHT_TEAM_PLAN.md), and [contracts](BLOODSIGHT_CONTRACTS.md).
+
 # Shared implementation contracts
 
 These are starting interfaces for the proposed MVP. They describe planned Python/Pydantic models and functions; there is no application implementation yet. Person 4 implements and maintains the models, and affected owners agree any interface changes at kickoff.

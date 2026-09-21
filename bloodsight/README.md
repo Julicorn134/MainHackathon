@@ -1,62 +1,52 @@
-# BloodSight AI
+# BloodSight AI prototype
 
-Hackathon prototype: a dashboard that forecasts blood-bank inventory 14 days ahead, flags a
-shortage before it happens, recommends a donor campaign, and lets the user test the campaign
-in a what-if simulator. All data is synthetic.
+Python/Streamlit application using synthetic data. Work from the repository's `bloodsight` branch. The [source brief](../docs/source/BloodSight-original.pdf), [requirements](../docs/BLOODSIGHT_REQUIREMENTS.md), [team plan](../docs/BLOODSIGHT_TEAM_PLAN.md), and [contracts](../docs/BLOODSIGHT_CONTRACTS.md) define the current build.
 
 ## Run
 
-```
+Run from this directory:
+
+```powershell
 python -m venv .venv
-.venv\Scripts\pip install -r requirements.txt
-.venv\Scripts\streamlit run app.py
+.venv\Scripts\python -m pip install -r requirements.txt
+.venv\Scripts\python -m streamlit run app.py
 ```
 
-`python forecast.py 2026-09-21` regenerates `data.csv` ending on the given date (default: today).
-The demo numbers below are for the dataset ending 2026-09-21; a different end date shifts the
-weekday alignment and the numbers move slightly, so regenerate once and rehearse on that file.
+The store creates an ignored `state.json`. Set `BLOODSIGHT_STATE` to a disposable JSON path before starting the app or tests to isolate a demonstration. Use a new path for a fresh seed. `python forecast.py 2026-09-21` regenerates tracked `data.csv`; this changes fixture and forecast values.
 
-## Login
-
-Two roles, demo accounts only (hardcoded in `auth.py`, shown on the login page, no real security):
+## Demo accounts
 
 | Username | Password | Role |
 | --- | --- | --- |
-| lab | lab123 | Lab / doctor: full forecasting dashboard, can launch and end donor campaigns |
-| patient | patient123 | Patient, blood type O-: own supply outlook, compatible supply, donation pledge |
-| patient2 | patient123 | Patient, blood type A+: the "nothing needed" case |
+| centre | centre123 | Blood centre: outlook, requests, bookings, notifications |
+| lab | lab123 | Laboratory: reports and patient notifications |
+| patient | patient123 | Alex, O-, donor preferences enabled |
+| patient2 | patient123 | Sam, A+, donor preferences disabled |
 
-A login lasts for the browser tab; a page refresh returns to the login page. Campaigns and pledges
-are kept in `state.json`. Delete that file to reset the demo.
-
-Two-tab demo: tab 1 as lab, launch the O- campaign. Tab 2 as patient, see the appeal and pledge.
-Back in tab 1, click any control (or switch blood type and back) and the pledge count shows 1 of 210.
+These are public credentials for synthetic accounts. `login.py` handles the interface and `store.py` implements account/state operations. Lab is a separate role from centre. The donor view now has Results, Needs, Donations, a rule-based Ask screen, Notifications and Me; it still needs booking-capacity/error handling, contact details and verification against the shared data changes.
 
 ## Files
 
-- `forecast.py`: synthetic data generator, ridge-regression forecast, risk rules, campaign sizing, backtest.
-- `app.py`: Streamlit entry point and the lab / doctor dashboard.
-- `auth.py`: demo login, campaign and pledge state.
-- `patient.py`: patient view.
-- `data.csv`: 180 days x 8 blood types (donations, usage, closing inventory).
+| File | Responsibility |
+| --- | --- |
+| `app.py` | Role-based entry point |
+| `login.py`, `ui.py` | Login and shared presentation |
+| `store.py` | JSON state, fixtures, matching, requests, bookings, notifications, lab reports |
+| `forecast.py`, `data.csv` | Synthetic history, ridge regressions, projections and scenarios |
+| `views/outlook.py` | Forecast dashboard and campaign prefill |
+| `views/centre.py` | Staff requests and bookings |
+| `views/lab.py` | Existing lab workflow |
+| `views/patient.py` | Existing donor/results portal to extend and verify |
+| `tests/ACCEPTANCE.md` | Earlier manual checklist; not a test result |
 
-## Demo path (about 90 seconds)
+## Existing forecast
 
-1. Cards: seven of eight types look fine today. O- has 184 units, five days of supply, no shortage.
-2. Alert + chart: the forecast crosses the safety threshold (100 units) in 7 days.
-3. "Why the model sees this": usage up 26 %, donations down 17 %, a public holiday inside the horizon.
-4. Recommendation: 210 additional donations over 5 days, launch within 72 hours.
-5. What-if slider: +100 still ends in a shortage, +150 avoids it, +210 restores the buffer.
-6. Delay slider: keep +210 but launch 3 days later and the shortage comes back. Timing is the point.
-7. Optional: open "Behind the forecast" for the model description and the backtest error.
+The generator produces 180 days for eight blood types. Separate ridge regressions predict demand and donations over 14 days using recent history, weekday, trend and configured holidays. Inventory is projected from opening stock plus supply minus demand. Safety/warning thresholds use three/five days of average demand; these are demo assumptions. The plotted band is heuristic, not a calibrated clinical confidence interval.
 
-## How the model works
+The existing backtest is a single synthetic holdout and is not real-world validation. Derive quantities and dates from the fixture; the old fixed 210-donation example is not an acceptance requirement.
 
-Per blood type, two ridge regressions (usage, donations) on the last 42 days with day-of-week,
-trend and public-holiday features. Projected inventory = current inventory + predicted donations
-- predicted usage. Thresholds are days of supply at the 90-day average usage: under 3 days is
-critical, under 5 days is medium. Campaign units become usable 4 days after launch (outreach,
-then testing and processing). The recommended size is the smallest campaign, found by simulation,
-that avoids the shortage and ends the 14 days above the warning level.
+## Intended integrated demonstration
 
-Not modelled: unit expiry (42-day shelf life), cross-type substitution, transfers between centres.
+Staff inspect a forecast and dated stock report, create a targeted request and view aggregate responses. An opted-in synthetic donor sees the request, books an available appointment and can cancel it. Staff see the booking and dated expected supply. Campaign closure must preserve appointments. Manual audits, facility demand and expiry are new work in the build prompts.
+
+Distinguish bookings, expected donations and usable inventory. Notifications remain inside the demonstration. Preserve existing laboratory features; the PDF's blood-supply workflow takes priority over expanding them.

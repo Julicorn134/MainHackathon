@@ -1,50 +1,44 @@
-# TrialMatch
+# BloodSight AI
 
-An evidence-backed clinical-trial screening prototype: paste a synthetic patient profile, retrieve recruiting studies from ClinicalTrials.gov, and review potential matches, missing information, and apparent mismatches with source evidence.
+**Predict. Prepare. Prevent Shortages.**
 
-## Project status
+A hackathon prototype for forecasting blood demand, reviewing inventory across facilities, and inviting opted-in synthetic donors to book appointments. The project uses test data; the intended setting is a service with limited resources and manually reported stock.
 
-Planning baseline for a four-person, four-hour hackathon. Application implementation has not started. The shared interfaces and work ownership are defined so all four people can start in parallel.
+The active implementation is on the **`bloodsight` branch**, in [`bloodsight/`](bloodsight/). The earlier TrialMatch plan remains in Git history and two historical planning files; it is not the current build brief.
 
-- [Four-person work plan](docs/TEAM_PLAN.md)
-- [Shared interfaces and data contracts](docs/CONTRACTS.md)
+## Start here
 
-## MVP workflow
+1. [Original Google Docs PDF — source brief](docs/source/BloodSight-original.pdf)
+2. [Requirements, current gaps and MVP priorities](docs/BLOODSIGHT_REQUIREMENTS.md)
+3. [Four-person ownership and integration plan](docs/BLOODSIGHT_TEAM_PLAN.md)
+4. [Shared implementation contracts](docs/BLOODSIGHT_CONTRACTS.md)
 
-1. Paste or load a synthetic patient profile.
-2. Extract facts, dates, units, and evidence; let the user correct them.
-3. Search recruiting interventional studies by condition.
-4. Screen a bounded candidate set against the full registry eligibility text and structured eligibility fields.
-5. Display ranked results with criterion-level evidence and focused follow-up questions.
+Give each person their complete prompt:
 
-Use three screening outcomes: **Potential match**, **Needs information**, and **Apparent mismatch**. Technical failures are **Not assessed**. Study teams determine enrollment eligibility; this prototype supports preliminary screening.
+| Person | Build area | Copy-ready prompt |
+| --- | --- | --- |
+| 1 | Forecasts, synthetic history and scenarios | [Prompt 1](docs/prompts/01_FORECAST.md) |
+| 2 | Shared data, inventory, matching and bookings | [Prompt 2](docs/prompts/02_DATA_AND_BOOKINGS.md) |
+| 3 | Staff dashboard and integration | [Prompt 3](docs/prompts/03_STAFF_AND_INTEGRATION.md) |
+| 4 | Donor portal | [Prompt 4](docs/prompts/04_DONOR_PORTAL.md) |
 
-## Initial scope
+## Run the existing prototype
 
-- One condition: type 2 diabetes.
-- Three synthetic demo profiles.
-- Retrieve up to 50 candidates; assess up to 10 initially.
-- Show search limits, record timestamps, site status, and links to source records.
-- Flag complex cohort logic or ambiguous requirements for manual review.
+From a clone of this repository:
 
-## Proposed stack
+```powershell
+git switch bloodsight
+git pull --ff-only origin bloodsight
+cd bloodsight
+python -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
+.venv\Scripts\python -m streamlit run app.py
+```
 
-Python, Streamlit, an HTTP client, Pydantic for shared schemas, and an existing LLM endpoint with structured output. Keep provider credentials on the server. The team should choose the LLM provider and model at kickoff and pin compatible dependencies during implementation.
+Use separate clones or worktrees for parallel work. See [application notes and demo accounts](bloodsight/README.md).
 
-The four-hour target assumes the team knows the stack and already has working LLM access. No training, database, user accounts, or EHR integration is required for this scope.
+## Current state
 
-## Data and references
+Source review through prototype commit `a99d91a` found a forecast/outlook, staff campaigns, demo login, JSON store, lab screens and an expanded donor portal. Forecasts are aggregated rather than separated by facility; expiry, regional stock, booking safeguards and dated appointment supply still need work. Existing acceptance checks are a checklist, not evidence that the application passes them.
 
-- [ClinicalTrials.gov v2 API](https://clinicaltrials.gov/data-api/api): public trial records, no API key needed. Detailed eligibility is primarily narrative text.
-- [ClinicalTrials.gov dataset timestamp](https://clinicaltrials.gov/api/v2/version): check freshness separately from an individual record's last update.
-- [Synthea downloads](https://synthetichealth.github.io/downloads.html): ready-made synthetic patient records; use small samples for fixtures.
-- [TrialGPT criterion annotations](https://huggingface.co/datasets/ncbi/TrialGPT-Criterion-Annotations): useful evaluation material; review label conventions for missing information before reuse.
-- [TrialGPT paper](https://www.nature.com/articles/s41467-024-53081-z) and [TrialMatchAI paper](https://www.nature.com/articles/s41467-026-70509-w): related work. Our hackathon emphasis is the review workflow and evidence traceability.
-
-Use synthetic patient information for this demo. Missing history is unknown, not evidence of absence. Real patient use requires a separately designed and reviewed deployment.
-
-## Team workflow
-
-Each person owns a feature branch and separate files. Person 4 coordinates integration and reviews changes to shared contracts. Agree on contract changes before implementing them, keep pull requests small, and integrate the first working path by the end of hour two.
-
-The proposed application layout and branch names are listed in the work plan; those modules are not implemented yet.
+The PDF records the full vision. The requirements separate that feature list from the narrower four-hour MVP. Live integrations, real outreach and deployment with a healthcare organisation are outside this synthetic demonstration.

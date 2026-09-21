@@ -48,16 +48,18 @@ CSS = """
 .st-key-login_card [data-testid="stTextInputRootElement"]:focus-within {border-color: #c8102e;}
 .st-key-login_card [data-testid="stTextInputField"] {height: 42px; border-radius: 8px;}
 .st-key-login_card [data-testid="stSelectbox"] [data-testid="stSelectboxRootElement"] {min-height: 44px; border-radius: 8px; border: 1px solid #d9d8d1;}
-.st-key-login_card [data-testid="stBaseButton-primaryFormSubmit"] {width: 100%; height: 44px; border-radius: 8px; background: #c8102e; border: 1px solid #c8102e; color: #ffffff; font-weight: 600;}
-.st-key-login_card [data-testid="stBaseButton-primaryFormSubmit"]:hover, .st-key-login_card [data-testid="stBaseButton-primaryFormSubmit"]:focus {background: #a80d26; border-color: #a80d26; color: #ffffff;}
+.st-key-login_card [data-testid="stFormSubmitButton"] {width: 100% !important;}
+.st-key-login_card [data-testid="stBaseButton-primaryFormSubmit"] {width: 100% !important; height: 40px !important; min-height: 40px !important; border-radius: 6px !important; background: #c8102e !important; border: 1px solid #c8102e !important; color: #ffffff !important; font-size: 13.5px !important; font-weight: 500 !important;}
+.st-key-login_card [data-testid="stBaseButton-primaryFormSubmit"]:hover, .st-key-login_card [data-testid="stBaseButton-primaryFormSubmit"]:focus {background: #a50d26 !important; border-color: #a50d26 !important; color: #ffffff !important;}
 .st-key-login_card [role="tablist"] {gap: 22px; border-bottom: 1px solid #e1e0d9; margin-bottom: 16px;}
 .st-key-login_card [data-testid="stTab"] {padding: 6px 0; background: transparent;}
 .st-key-login_card [data-testid="stTab"] .react-aria-SelectionIndicator {background: #c8102e; background-color: #c8102e;}
 .st-key-login_card [data-testid="stTab"][aria-selected="true"] p {color: #c8102e; font-weight: 600;}
 .bs-rule {border-top: 1px solid #ebeae4; margin: 20px 0 12px;}
 .bs-demo-label {font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; color: #8a8a83; margin-bottom: 8px;}
-.st-key-login_card [data-testid="stButton"] button {height: 40px; border-radius: 8px; border: 1px solid #e1e0d9; background: #fbfbf9; color: #33332f; font-weight: 500;}
-.st-key-login_card [data-testid="stButton"] button:hover {border-color: #c8102e; color: #c8102e;}
+.st-key-login_card [data-testid="stButton"] {width: 100% !important;}
+.st-key-login_card [data-testid="stButton"] button {width: 100% !important; height: 36px !important; min-height: 36px !important; border-radius: 6px !important; border: 1px solid #d4d3cd !important; background: #ffffff !important; color: #111827 !important; font-size: 13.5px !important; font-weight: 500 !important; box-shadow: none !important;}
+.st-key-login_card [data-testid="stButton"] button:hover {border-color: #9ca3af !important; color: #111827 !important;}
 .bs-legal {max-width: 560px; margin: 22px auto 0; text-align: center;}
 </style>
 """
